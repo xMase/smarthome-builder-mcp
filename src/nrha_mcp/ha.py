@@ -4,7 +4,10 @@ Recognizes node-red-contrib-home-assistant-websocket node types and, optionally
 (when HA_URL/HA_TOKEN are set), validates service/entity references against a live HA.
 """
 
+import httpx
+
 from .client import NRClient
+from .config import Settings
 
 # Node types provided by node-red-contrib-home-assistant-websocket
 HA_NODE_TYPES = {
@@ -45,10 +48,6 @@ async def get_server_config(client: NRClient) -> dict:
     flows, _ = await client.get_flows()
     servers = [{"id": f["id"], "name": f.get("name", "")} for f in flows if f.get("type") == "server"]
     return {"servers": servers, "total": len(servers)}
-
-
-import httpx
-from .config import Settings
 
 
 class HARestClient:
