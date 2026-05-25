@@ -31,6 +31,8 @@ async def safe_deploy(client, store, settings, *, node_id, fields, confirm=False
 
 async def safe_deploy_many(client, store, settings, *, updates, confirm=False, description=None):
     for u in updates:
+        if "node_id" not in u or "fields" not in u:
+            raise NRError(f"Each update needs 'node_id' and 'fields': {u}")
         bad = set(u.get("fields", {})) & IMMUTABLE
         if bad:
             raise NRError(f"Cannot modify immutable fields {bad} on '{u['node_id']}'")
@@ -98,6 +100,16 @@ async def create_nodes(client, store, settings, *, nodes, confirm=False, descrip
 
     summary = description or f"create {len(nodes)} node(s): {[n['id'] for n in nodes]}"
     return await commit(client, store, settings, rebuild=rebuild, summary=summary, confirm=confirm)
+
+
+async def restore_backup(client, store, settings, *, path, confirm=False):
+    restored = store.restore(path)
+
+    def rebuild(flows):
+        return copy.deepcopy(restored)
+
+    return await commit(client, store, settings, rebuild=rebuild,
+                        summary=f"restore backup {path}", confirm=confirm)
 
 
 async def delete_nodes(client, store, settings, *, node_ids, confirm=False, description=None):

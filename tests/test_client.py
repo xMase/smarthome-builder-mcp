@@ -73,3 +73,13 @@ async def test_404_maps_to_not_found():
     with pytest.raises(NRNotFoundError):
         await c.get_context("x")
     await c.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_post_flows_empty_body_ok():
+    respx.post("http://nr.test/flows").mock(return_value=httpx.Response(200, content=b""))
+    c = make_client()
+    result = await c.post_flows([], "r")
+    assert result == ""
+    await c.close()

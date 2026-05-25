@@ -2,6 +2,7 @@
 import pytest
 
 from nrha_mcp import edit
+from nrha_mcp.backup import BackupStore
 from nrha_mcp.client import NRError, NRNotFoundError
 
 
@@ -99,3 +100,24 @@ async def test_delete_tab_refused(fake_client, settings_auto, tmp_path):
     store = BackupStore(str(tmp_path))
     with pytest.raises(NRError):
         await edit.delete_nodes(fake_client, store, settings_auto, node_ids=["tab1"], confirm=True)
+
+
+@pytest.mark.asyncio
+async def test_create_nodes_unknown_tab_rejected(fake_client, settings_auto, tmp_path):
+    store = BackupStore(str(tmp_path))
+    with pytest.raises(NRError):
+        await edit.create_nodes(fake_client, store, settings_auto,
+                                nodes=[{"id": "x", "type": "debug", "z": "no_such_tab"}],
+                                confirm=True)
+
+
+@pytest.mark.asyncio
+async def test_restore_backup_redeploys(fake_client, settings_auto, tmp_path):
+    store = BackupStore(str(tmp_path))
+    original_flows = [{"id": "tab1", "type": "tab", "label": "Test"}]
+    backup_path = store.snapshot(original_flows, "test snapshot")
+    res = await edit.restore_backup(fake_client, store, settings_auto,
+                                    path=str(backup_path), confirm=True)
+    assert res["deployed"] is True
+    deployed_flows, _ = await fake_client.get_flows()
+    assert deployed_flows == original_flows
