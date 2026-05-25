@@ -1,0 +1,9 @@
+services:
+  nodered:
+    image: nodered/node-red:latest
+    ports:
+      - "1880:1880"
+    volumes:
+      - nr_data:/data
+volumes:
+  nr_data:
