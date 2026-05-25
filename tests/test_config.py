@@ -1,4 +1,6 @@
 # tests/test_config.py
+import pytest
+from pydantic import ValidationError
 from nrha_mcp.config import Settings
 
 
@@ -21,6 +23,5 @@ def test_env_override(monkeypatch):
 
 
 def test_invalid_mode_rejected():
-    import pytest
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Settings(deploy_mode="banana", _env_file=None)

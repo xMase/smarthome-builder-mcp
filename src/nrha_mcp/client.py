@@ -3,8 +3,8 @@
 Ported from nr-mcp (MIT) + PR #3. Constructor takes a Settings object.
 """
 
-from .config import Settings
 import httpx
+from .config import Settings
 
 
 class NRError(Exception):
@@ -57,7 +57,8 @@ class NRClient:
         if r.status_code == 409:
             raise NRConflictError("Flow modified by another client (rev mismatch). Retry with fresh GET.")
         self._check_response(r)
-        return r.json().get("rev", "")
+        data = r.json() if r.content else {}
+        return data.get("rev", "")
 
     async def get_context(self, flow_id: str) -> dict:
         r = await self._client.get(f"/context/flow/{flow_id}")
