@@ -38,6 +38,9 @@ EXPECTED_TOOLS = {
     "nr_add_wire",
     "nr_create_nodes",
     "nr_delete_nodes",
+    "nr_backup_flow",
+    "nr_list_backups",
+    "nr_restore_backup",
     "nr_get_installed_modules",
     "nr_install_module",
     "nr_inject",
@@ -122,13 +125,13 @@ async def run_smoke():
         async with ClientSession(read, write) as session:
             await session.initialize()
 
-            # Step 1: List tools — assert all 19 present
+            # Step 1: List tools — assert all expected present
             print("\nStep 1: list_tools()")
             tools_result = await session.list_tools()
             tool_names = {t.name for t in tools_result.tools}
             missing = EXPECTED_TOOLS - tool_names
             assert not missing, f"Missing tools: {missing}"
-            print(f"  OK: {len(tool_names)} tools registered, all 19 expected present.")
+            print(f"  OK: {len(tool_names)} tools registered, all {len(EXPECTED_TOOLS)} expected present.")
 
             # Step 2: nr_get_flow_summary
             print("\nStep 2: nr_get_flow_summary()")
