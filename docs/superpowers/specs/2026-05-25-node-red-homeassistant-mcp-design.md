@@ -101,6 +101,9 @@ MCP client (Claude Code / Desktop / others)
   reorders tabs).
 - Supports **batched multi-node patches in a single GET→POST cycle** (one optimistic-locking
   round for many edits, instead of N conflict-prone deploys) — powers `nr_safe_deploy_many`.
+- Exposes the **deploy gate** (compute proposed flows → diff → propose/confirm → backup → post)
+  that every mutating tool routes through. nr-mcp's tools deploy *immediately*; this project
+  wraps that logic with the backup + propose-gate described in §8.
 - Always asks the **Backup store** to snapshot the affected flow(s) *before* posting.
 - Depends on: Admin API client, Backup store. No MCP/HA knowledge.
 
@@ -147,18 +150,16 @@ Naming prefix `nr_` (kept from nr-mcp for familiarity); HA-specific tools use `h
 - `ha_list_ha_nodes` — all Home Assistant nodes in the flows, with the entity/service/event each uses.
 - `ha_get_server_config` — the HA server config node(s) Node-RED uses.
 
-**Author + deploy (stateless — see §8):**
-- `nr_create_nodes` / `nr_update_nodes` / `nr_delete_nodes` — take a change spec, compute the
-  resulting full-flow payload, and return a human-readable **diff/preview** plus that payload.
-  They do **not** write to Node-RED themselves.
-- `nr_add_wire` — idempotently add a wire between two nodes, preserving existing connections
-  (no-op if the wire already exists). Same stateless `preview_diff` + `proposed_flow` contract.
-- `nr_safe_deploy` — given a proposed full-flow payload, write it with optimistic locking +
-  pre-deploy backup. In `propose` mode requires `confirm=true`; in `auto` mode the author tools
-  may chain straight into it.
-- `nr_safe_deploy_many` — apply several node patches in a single atomic GET→POST, so a batch of
-  edits shares one optimistic-locking cycle instead of N conflicting deploys. Same backup +
-  `confirm` gating as `nr_safe_deploy`.
+**Author + deploy (each is GET→modify→POST through the safety gate of §8):**
+- `nr_safe_deploy` — patch one node's `fields` (merge; immutable `id`/`type`/`z` rejected).
+- `nr_safe_deploy_many` — patch many nodes' fields in one atomic deploy (single locking cycle).
+- `nr_add_wire` — idempotently add a wire `from_id[output_index] → to_id` (preserves existing).
+- `nr_create_nodes` — add new nodes/groups (validates ids, target tabs, duplicates).
+- `nr_delete_nodes` — delete nodes; cleans up `group.nodes` and `wires` references.
+
+All mutating tools accept `confirm: bool` and route through the gate: in `propose` mode they
+return a diff **preview** and write nothing unless `confirm=true`; every real write is
+backup-first.
 
 **Backups & safety:**
 - `nr_backup_flow` — manual snapshot.
@@ -186,19 +187,19 @@ Naming prefix `nr_` (kept from nr-mcp for familiarity); HA-specific tools use `h
 
 ## 8. Safety workflow
 
-**Stateless model.** There is no hidden server-side "pending changeset". The author tools
-(`nr_create_nodes`/`nr_update_nodes`/`nr_delete_nodes`) are pure: they fetch the current flow,
-apply the requested change in memory, and return `{ preview_diff, proposed_flow }`. Writing
-happens only via `nr_safe_deploy`, which takes a `proposed_flow` and the current `rev`.
+Every mutating tool deploys through a shared **safety gate**:
+1. GET current flows (+ `rev`).
+2. Compute the *proposed* flows in memory — deterministically from the tool's arguments.
+3. Diff current vs proposed → a human-readable **preview** (added / removed / changed nodes).
+4. If `DEPLOY_MODE=propose` **and** `confirm` is not `true` → return the preview and **stop**
+   (nothing is written).
+5. Otherwise: snapshot a **backup** of the current flows, then POST with optimistic locking
+   (on `409 Conflict` refetch, recompute the proposal against fresh state, retry once).
 
-Config `DEPLOY_MODE`:
-- `propose` *(default)* — `nr_safe_deploy` writes **only** when called with `confirm=true`.
-  The natural loop is: author tool → show `preview_diff` to the human → on OK, call
-  `nr_safe_deploy(proposed_flow, confirm=true)`. This implements the conservative
-  "backup → propose → OK → deploy" flow recommended for production systems.
-- `auto` — `nr_safe_deploy` writes without requiring `confirm`.
-
-A backup is **always** taken before any write, in both modes.
+This is **stateless** — there is no hidden pending changeset. Re-calling the same tool with
+`confirm=true` recomputes against the current state, so two concurrent edits can never be
+silently mixed. `DEPLOY_MODE=auto` skips step 4 (still backup-first). A backup is **always**
+taken before any real write, in both modes.
 
 ## 9. Configuration (env vars)
 
