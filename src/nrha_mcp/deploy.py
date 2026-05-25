@@ -29,4 +29,37 @@ def diff_flows(before: list[dict], after: list[dict]) -> dict:
 
 
 async def commit(client, store, settings, *, rebuild, summary, confirm=False):
-    raise NotImplementedError("commit not yet implemented")
+    """Run the safety gate.
+
+    rebuild(flows) -> proposed_flows : pure, must NOT mutate `flows`.
+    Returns a dict describing either the preview (no write) or the deploy result.
+    """
+    flows, rev = await client.get_flows()
+    proposed = rebuild(flows)
+    preview = diff_flows(flows, proposed)
+
+    if settings.deploy_mode == "propose" and not confirm:
+        return {
+            "deployed": False,
+            "mode": "propose",
+            "summary": summary,
+            "preview": preview,
+            "next": "Re-call this tool with confirm=true to apply.",
+        }
+
+    backup_path = store.snapshot(flows, summary)
+    try:
+        new_rev = await client.post_flows(proposed, rev)
+    except NRConflictError:
+        flows, rev = await client.get_flows()
+        proposed = rebuild(flows)
+        new_rev = await client.post_flows(proposed, rev)
+
+    return {
+        "deployed": True,
+        "rev": new_rev,
+        "backup": str(backup_path),
+        "deployed_at": _now_iso(),
+        "summary": summary,
+        "changes": preview,
+    }
