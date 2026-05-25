@@ -27,4 +27,11 @@ class BackupStore:
         return out
 
     def restore(self, path: str) -> list[dict]:
-        return json.loads(Path(path).read_text())["flows"]
+        try:
+            data = json.loads(Path(path).read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            raise ValueError(f"Cannot read backup '{path}': {e}")
+        flows = data.get("flows")
+        if not isinstance(flows, list):
+            raise ValueError(f"Backup '{path}' has no valid 'flows' list")
+        return flows

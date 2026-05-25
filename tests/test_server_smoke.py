@@ -11,5 +11,7 @@ def test_tools_registered():
         "nr_get_debug_output", "nr_safe_deploy", "nr_safe_deploy_many", "nr_add_wire",
         "nr_create_nodes", "nr_delete_nodes", "nr_get_installed_modules", "nr_install_module",
         "nr_inject", "ha_list_ha_nodes", "ha_get_server_config", "ha_validate_calls",
+        "nr_backup_flow", "nr_list_backups", "nr_restore_backup",
     }
     assert expected.issubset(names)
+    assert len(names) == 22

@@ -116,6 +116,31 @@ async def nr_delete_nodes(node_ids: list[str], confirm: bool = False, descriptio
     return await _wrap(lambda: edit.delete_nodes(client, store, settings, node_ids=node_ids, confirm=confirm, description=description))
 
 
+# ---- backups ----
+@mcp.tool()
+async def nr_backup_flow() -> str:
+    """Manually snapshot the current flows to a backup file. Returns the backup path."""
+    async def _do():
+        flows, _ = await client.get_flows()
+        path = store.snapshot(flows, "manual backup")
+        return {"backup": str(path)}
+    return await _wrap(lambda: _do())
+
+
+@mcp.tool()
+async def nr_list_backups() -> str:
+    """List saved flow backups (path, timestamp, label)."""
+    async def _do():
+        return {"backups": store.list_backups()}
+    return await _wrap(lambda: _do())
+
+
+@mcp.tool()
+async def nr_restore_backup(path: str, confirm: bool = False) -> str:
+    """Restore flows from a backup file. Confirm-gated, backup-first (the current state is itself snapshotted before overwrite)."""
+    return await _wrap(lambda: edit.restore_backup(client, store, settings, path=path, confirm=confirm))
+
+
 # ---- modules / inject ----
 @mcp.tool()
 async def nr_get_installed_modules(query: str | None = None) -> str:

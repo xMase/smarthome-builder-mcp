@@ -53,6 +53,8 @@ async def commit(client, store, settings, *, rebuild, summary, confirm=False):
     except NRConflictError:
         flows, rev = await client.get_flows()
         proposed = rebuild(flows)
+        preview = diff_flows(flows, proposed)
+        backup_path = store.snapshot(flows, summary)
         new_rev = await client.post_flows(proposed, rev)
 
     return {
