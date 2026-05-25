@@ -48,3 +48,28 @@ async def test_auth_error_maps():
     with pytest.raises(NRAuthError):
         await c.get_flows()
     await c.close()
+
+
+def test_basic_auth_used():
+    c = make_client(nr_user="u", nr_pass="p")
+    assert c._client.auth is not None
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_403_maps_to_auth_error():
+    respx.get("http://nr.test/flows").mock(return_value=httpx.Response(403))
+    c = make_client()
+    with pytest.raises(NRAuthError):
+        await c.get_flows()
+    await c.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_404_maps_to_not_found():
+    respx.get("http://nr.test/context/flow/x").mock(return_value=httpx.Response(404))
+    c = make_client()
+    with pytest.raises(NRNotFoundError):
+        await c.get_context("x")
+    await c.close()
