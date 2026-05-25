@@ -8,6 +8,14 @@ breaking a working install: every change is backed up first, deploys use optimis
 
 Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) (MIT). See `NOTICE`.
 
+## Status & disclaimer
+
+**Early alpha.** This project was **entirely "vibe-coded"** — written by an AI agent (Claude)
+under human supervision, following a test-driven plan — and is provided **as-is, with no
+warranties of any kind** (see `LICENSE`). It talks to your Node-RED Admin API and can modify and
+deploy flows; review the code and keep a backup of your flows before pointing it at anything you
+care about. Use at your own risk.
+
 ## Quick start (stdio)
 
 ```bash
@@ -34,7 +42,7 @@ docker compose -f docker-compose.dev.yml down -v
 ```
 
 The script:
-- Lists all 19 registered MCP tools and asserts every expected name is present.
+- Lists the registered MCP tools and asserts every expected name (22) is present.
 - Calls `nr_get_flow_summary` and checks the response structure.
 - Seeds a tab + inject node via the Admin API if Node-RED is empty.
 - Calls `nr_safe_deploy` in propose mode (`confirm=false`) and asserts `deployed:false` plus a diff preview.
