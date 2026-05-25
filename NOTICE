@@ -1,0 +1,7 @@
+node-red-homeassistant-mcp
+Copyright (c) 2026 xmase
+
+This project is based on nr-mcp (MIT) by NXTAssist.ai:
+  https://github.com/Texan-NXTassist/nr-mcp
+and incorporates its open Pull Request #3 (NR_VERIFY_SSL, nr_get_global_context,
+nr_safe_deploy_many, nr_add_wire, the `fields` parameter on nr_get_flow).
