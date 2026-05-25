@@ -18,3 +18,29 @@ async def test_list_ha_nodes(fake_client):
 async def test_get_server_config(fake_client):
     res = await ha.get_server_config(fake_client)
     assert res["servers"][0]["id"] == "srv1"
+
+
+class FakeHA:
+    def __init__(self, entities, services):
+        self._entities = entities
+        self._services = services
+    async def list_entities(self):
+        return self._entities
+    async def list_services(self):
+        return self._services
+
+
+@pytest.mark.asyncio
+async def test_validate_flags_missing_entity(fake_client):
+    hac = FakeHA(entities={"switch.other"}, services={"switch.turn_on"})
+    res = await ha.validate_calls(fake_client, hac)
+    problems = {p["node_id"]: p for p in res["problems"]}
+    assert "n3" in problems
+    assert "switch.boiler" in problems["n3"]["missing_entity"]
+
+
+@pytest.mark.asyncio
+async def test_validate_ok_when_present(fake_client):
+    hac = FakeHA(entities={"switch.boiler"}, services={"switch.turn_on"})
+    res = await ha.validate_calls(fake_client, hac)
+    assert res["problems"] == []
