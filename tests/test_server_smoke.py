@@ -12,7 +12,7 @@ def test_tools_registered():
         "nr_create_nodes", "nr_delete_nodes", "nr_get_installed_modules", "nr_install_module",
         "nr_inject", "ha_list_ha_nodes", "ha_get_server_config",
         "nr_backup_flow", "nr_list_backups", "nr_restore_backup", "nr_diff",
-        "ha_search_entities", "ha_get_state",
+        "ha_search_entities", "ha_get_state", "ha_get_services",
     }
     assert expected.issubset(names)
-    assert len(names) == 26
+    assert len(names) == 27
