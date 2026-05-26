@@ -40,13 +40,27 @@ FAKE_STATES = [
     },
 ]
 
+FAKE_SERVICES = [
+    {"domain": "light", "services": {
+        "turn_on": {"name": "Turn on", "description": "Turn the light on",
+                    "fields": {"brightness_pct": {"description": "Brightness %", "example": 50,
+                                                  "required": False,
+                                                  "selector": {"number": {"min": 0, "max": 100}}}}},
+        "turn_off": {"name": "Turn off", "description": "Turn the light off", "fields": {}},
+    }},
+    {"domain": "switch", "services": {
+        "toggle": {"name": "Toggle", "description": "Toggle the switch", "fields": {}},
+    }},
+]
+
 
 class FakeHAClient:
     """Minimal fake HA REST client for unit tests."""
 
-    def __init__(self, states=None, state_map=None):
+    def __init__(self, states=None, state_map=None, services=None):
         self._states = states or FAKE_STATES
         self._state_map = state_map or {s["entity_id"]: s for s in self._states}
+        self._services = services if services is not None else FAKE_SERVICES
 
     async def get_states(self):
         return list(self._states)
@@ -55,6 +69,9 @@ class FakeHAClient:
         if entity_id not in self._state_map:
             raise KeyError(entity_id)
         return self._state_map[entity_id]
+
+    async def get_services(self):
+        return list(self._services)
 
 
 @pytest.mark.asyncio
@@ -113,3 +130,33 @@ async def test_harestclient_get_states():
     # Verify Authorization header was sent
     req = respx.calls.last.request
     assert req.headers["authorization"] == "Bearer t"
+
+
+@pytest.mark.asyncio
+async def test_get_services_index():
+    fake = FakeHAClient()
+    res = await ha.get_services(fake)
+    assert res["total_domains"] == 2
+    assert res["domains"]["light"] == ["turn_off", "turn_on"]   # names sorted
+    assert res["domains"]["switch"] == ["toggle"]
+
+
+@pytest.mark.asyncio
+async def test_get_services_domain_detail_trims_fields():
+    fake = FakeHAClient()
+    res = await ha.get_services(fake, "light")
+    assert res["domain"] == "light"
+    assert res["total_services"] == 2
+    svc = res["services"]["turn_on"]
+    assert svc["name"] == "Turn on"
+    assert svc["fields"]["brightness_pct"] == {
+        "description": "Brightness %", "example": 50, "required": False,
+    }  # selector dropped
+
+
+@pytest.mark.asyncio
+async def test_get_services_unknown_domain():
+    fake = FakeHAClient()
+    res = await ha.get_services(fake, "nope")
+    assert res["found"] is False
+    assert res["available_domains"] == ["light", "switch"]
