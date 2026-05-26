@@ -32,7 +32,7 @@ EXPECTED_TOOLS = {
     "nr_get_node_config",
     "nr_get_flow_context",
     "nr_get_global_context",
-    "nr_get_debug_output",
+    "nr_capture_debug",
     "nr_safe_deploy",
     "nr_safe_deploy_many",
     "nr_add_wire",
