@@ -5,6 +5,7 @@ a minimal REST client for live entity discovery.
 """
 
 import httpx
+from datetime import datetime, timedelta, timezone
 
 from .client import NRClient
 from .config import Settings
@@ -75,6 +76,14 @@ class HARestClient:
         r.raise_for_status()
         return r.json()
 
+    async def get_history(self, entity_id: str, start_iso: str, end_iso: str | None = None) -> list:
+        params = {"filter_entity_id": entity_id, "minimal_response": "", "no_attributes": ""}
+        if end_iso:
+            params["end_time"] = end_iso
+        r = await self._client.get(f"/api/history/period/{start_iso}", params=params)
+        r.raise_for_status()
+        return r.json()
+
     async def close(self):
         await self._client.aclose()
 
@@ -135,3 +144,35 @@ async def get_services(ha_client, domain: str | None = None) -> dict:
             "fields": {fn: _trim_field(f) for fn, f in (svc.get("fields") or {}).items()},
         }
     return {"domain": domain, "services": services, "total_services": len(services)}
+
+
+_RETENTION_NOTE = (
+    "HA keeps raw history for a limited period (recorder default ~10 days), so a "
+    "wide window returns only what is retained (possibly nothing). For weeks/months "
+    "use long-term statistics, not this tool."
+)
+
+
+async def get_entity_history(ha_client, entity_id: str, hours: int = 24, max_points: int = 200) -> dict:
+    """Recent state-change history for one entity over the last `hours`."""
+    start = datetime.now(timezone.utc) - timedelta(hours=hours)
+    data = await ha_client.get_history(entity_id, start.isoformat())
+    series = data[0] if data else []
+    points = [{"state": p.get("state"),
+               "last_changed": p.get("last_changed") or p.get("last_updated")} for p in series]
+    total = len(points)
+    kept = points[-max_points:] if total > max_points else points
+    out = {
+        "entity_id": entity_id,
+        "hours": hours,
+        "total_changes": total,
+        "points": kept,
+        "first": points[0] if points else None,
+        "last": points[-1] if points else None,
+    }
+    if total > max_points:
+        out["truncated"] = True
+        out["truncated_note"] = f"Showing the most recent {max_points} of {total} state changes."
+    if not points or hours > 240:
+        out["note"] = _RETENTION_NOTE
+    return out
