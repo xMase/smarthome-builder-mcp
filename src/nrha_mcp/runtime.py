@@ -52,7 +52,7 @@ async def _connect_ws(client: NRClient):
 
 
 def _normalize(frame: dict) -> dict | None:
-    """Map a /comms frame to our message dict, or None if it is not debug/status."""
+    """Map a /comms frame to our message dict, or None if it is not a debug/status/notification frame."""
     topic = frame.get("topic", "")
     data = frame.get("data", {}) or {}
     if topic == "debug":
