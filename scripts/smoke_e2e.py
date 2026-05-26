@@ -47,6 +47,7 @@ EXPECTED_TOOLS = {
     "nr_get_installed_modules",
     "nr_install_module",
     "nr_inject",
+    "nr_diagnostics",
     "ha_list_ha_nodes",
     "ha_get_server_config",
     "ha_search_entities",
