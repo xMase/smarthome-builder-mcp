@@ -69,3 +69,26 @@ def validate_flows(flows, *, focus_ids=None, registered_types=None):
                                      f"Node '{nid}' references missing server config '{server}'", focus_ids))
 
     return {"valid": not errors, "errors": errors, "warnings": warnings, "checked": len(flows)}
+
+
+def _registered_types(nodes_payload) -> set:
+    """Best-effort: union of node 'types' from the /nodes payload."""
+    types = set()
+    if isinstance(nodes_payload, list):
+        for entry in nodes_payload:
+            if isinstance(entry, dict):
+                for t in entry.get("types", []) or []:
+                    types.add(t)
+    return types
+
+
+async def validate_flow(client, *, nodes=None) -> dict:
+    """Validate the current flows, or (current + `nodes`) when nodes are given."""
+    flows, _ = await client.get_flows()
+    if nodes:
+        candidate = flows + nodes
+        focus = {n["id"] for n in nodes if n.get("id")}
+    else:
+        candidate, focus = flows, None
+    registered = _registered_types(await client.get_nodes())
+    return validate_flows(candidate, focus_ids=focus, registered_types=registered or None)

@@ -81,3 +81,34 @@ def test_focus_ids_marks_findings():
     res = validate_flows(flows, focus_ids={"n1"})
     err = next(e for e in res["errors"] if e["code"] == "wire_to_missing")
     assert err.get("focus") is True
+
+
+import pytest
+
+from nrha_mcp import validate
+
+
+@pytest.mark.asyncio
+async def test_validate_flow_audits_current(fake_client):
+    # conftest SAMPLE_FLOWS is structurally valid
+    res = await validate.validate_flow(fake_client)
+    assert res["valid"] is True
+
+
+@pytest.mark.asyncio
+async def test_validate_flow_merges_proposed_nodes(fake_client):
+    new = [{"id": "x1", "type": "function", "z": "tab1", "wires": [["ghost"]]}]
+    res = await validate.validate_flow(fake_client, nodes=new)
+    assert res["valid"] is False
+    err = next(e for e in res["errors"] if e["code"] == "wire_to_missing")
+    assert err["node_id"] == "x1"
+    assert err.get("focus") is True
+
+
+@pytest.mark.asyncio
+async def test_validate_flow_uses_registered_types(fake_client):
+    fake_client.nodes = [{"types": ["function", "debug"]}]
+    new = [{"id": "x1", "type": "mystery", "z": "tab1", "wires": [[]]}]
+    res = await validate.validate_flow(fake_client, nodes=new)
+    assert any(w["code"] == "unregistered_type" and w["node_id"] == "x1"
+               for w in res["warnings"])
