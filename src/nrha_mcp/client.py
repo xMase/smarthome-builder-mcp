@@ -144,6 +144,11 @@ class NRClient:
         self._check_response(r)
         return r.json()
 
+    async def get_settings(self) -> dict:
+        r = await self._do("GET", "/settings", headers={"Accept": "application/json"})
+        self._check_response(r)
+        return r.json()
+
     async def install_module(self, module_name: str) -> dict:
         r = await self._do(
             "POST",
