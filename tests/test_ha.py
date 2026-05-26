@@ -202,6 +202,9 @@ async def test_get_entity_history_truncates_to_recent():
     assert len(res["points"]) == 10
     assert res["points"][-1]["state"] == "59"   # most recent kept
     assert res["points"][0]["state"] == "50"
+    # first/last reflect the FULL series, not the truncated slice
+    assert res["first"]["state"] == "0"
+    assert res["last"]["state"] == "59"
 
 
 @pytest.mark.asyncio
