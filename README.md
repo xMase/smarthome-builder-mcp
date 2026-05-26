@@ -25,7 +25,7 @@ care about. Use at your own risk.
 
 ## Tools
 
-21 MCP tools, grouped:
+23 MCP tools, grouped:
 
 | Group | Tools |
 |---|---|
@@ -33,7 +33,7 @@ care about. Use at your own risk.
 | **Author & deploy** (confirm-gated, backup-first) | `nr_safe_deploy` (patch one node), `nr_safe_deploy_many` (atomic multi-node), `nr_add_wire` (idempotent), `nr_create_nodes`, `nr_delete_nodes` |
 | **Backups** | `nr_backup_flow`, `nr_list_backups`, `nr_restore_backup` |
 | **Modules & testing** | `nr_get_installed_modules`, `nr_install_module`, `nr_inject` |
-| **Home Assistant** | `ha_list_ha_nodes`, `ha_get_server_config` |
+| **Home Assistant** | `ha_list_ha_nodes`, `ha_get_server_config`, `ha_search_entities` (live entity lookup by id/name), `ha_get_state` (current state + attributes) |
 
 ## How the safety model works
 
@@ -61,6 +61,8 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 | `NR_USER` / `NR_PASS` | — | Node-RED login credentials (HA add-on: your HA username/password) |
 | `NR_AUTH` | `basic` | How `NR_USER`/`NR_PASS` are used: `basic` — HTTP Basic on every request (correct for the **HA Node-RED add-on**, where nginx handles auth before Node-RED sees the request); `token` — exchange for a bearer via `POST /auth/token` (vanilla Node-RED with `adminAuth`) |
 | `NR_VERIFY_SSL` | `1` | `0` to skip TLS verification (self-signed certs) |
+| `HA_URL` | — | Home Assistant base URL (`:8123`) — **distinct from `NR_URL` (`:1880`)**. Enables `ha_search_entities`/`ha_get_state` for entity discovery during authoring |
+| `HA_TOKEN` | — | Long-lived HA access token (Profile → Long-Lived Access Tokens) |
 | `DEPLOY_MODE` | `propose` | `propose` (preview, write on `confirm=true`) or `auto` |
 | `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` (streamable-HTTP) |
@@ -148,7 +150,7 @@ docker compose down -v
 ```
 
 The script:
-- Lists the registered MCP tools and asserts every expected name (21) is present.
+- Lists the registered MCP tools and asserts every expected name (23) is present.
 - Calls `nr_get_flow_summary` and checks the response structure.
 - Seeds a tab + inject node via the Admin API if Node-RED is empty.
 - Calls `nr_safe_deploy` in propose mode (`confirm=false`) and asserts `deployed:false` plus a diff preview.
