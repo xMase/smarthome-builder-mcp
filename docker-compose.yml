@@ -10,10 +10,18 @@ services:
   nrha-mcp:
     build: .
     image: node-red-homeassistant-mcp:local
-    # Your tunables come from .env: DEPLOY_MODE, MCP_HTTP_PORT,
+    # Your tunables come from .env: DEPLOY_MODE, MCP_HTTP_PORT, NR_AUTH,
     # NR_TOKEN/NR_USER/NR_PASS, ...
     env_file:
       - .env
+    environment:
+      # Container invariants — forced regardless of .env (environment wins over env_file):
+      MCP_TRANSPORT: "http"          # this stack runs the HTTP service
+      MCP_HTTP_HOST: "0.0.0.0"       # MUST bind all interfaces inside the container
+      BACKUP_DIR: "/data/backups"    # persist backups on the mounted volume
+      # Node-RED URL: from your .env if set, otherwise the bundled throwaway Node-RED.
+      # So you can point at your own Node-RED by setting NR_URL in .env — no edit here.
+      NR_URL: "${NR_URL:-http://nodered:1880}"
     # Publish the port chosen in .env (interpolated from ./.env; default 8080).
     # To restrict to localhost only, change to "127.0.0.1:${MCP_HTTP_PORT:-8080}:...".
     ports:
@@ -24,8 +32,8 @@ services:
       - nodered
     restart: unless-stopped
 
-  # Throwaway Node-RED to test against. Delete this service and point NR_URL
-  # (override above) at your own Node-RED to use a real one.
+  # Throwaway Node-RED to test against. To use your own, set NR_URL in .env
+  # (and you can delete this service).
   nodered:
     image: nodered/node-red:latest
     ports:
