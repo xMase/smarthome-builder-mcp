@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from .config import Settings
 from .client import NRClient, NRError
 from .backup import BackupStore
-from . import flows, edit, modules, ha
+from . import flows, edit, modules, ha, runtime
 
 settings = Settings()
 client = NRClient(settings)
@@ -99,9 +99,29 @@ async def nr_get_global_context(key: str | None = None) -> str:
 
 
 @mcp.tool()
-async def nr_get_debug_output(flow_id: str, key: str | None = None) -> str:
-    """Read debug data stored to flow context."""
-    return await _wrap(lambda: flows.get_debug_output(client, flow_id, key))
+async def nr_capture_debug(
+    window_ms: int = 2000,
+    inject_node_id: str | None = None,
+    topics: list[str] | None = None,
+    node_id: str | None = None,
+    flow_id: str | None = None,
+    max_messages: int = 100,
+) -> str:
+    """Capture live debug/status messages from the Node-RED /comms WebSocket.
+
+    Subscribes first, then (optionally) triggers `inject_node_id`, then collects
+    messages for `window_ms`. Use this to verify a flow's output deterministically:
+    debug-node output is NOT in flow context, so the context tools cannot see it.
+    Without `inject_node_id` it passively listens for the window."""
+    return await _wrap(lambda: runtime.capture_debug(
+        client,
+        window_ms=window_ms,
+        inject_node_id=inject_node_id,
+        topics=topics,
+        node_id=node_id,
+        flow_id=flow_id,
+        max_messages=max_messages,
+    ))
 
 
 # ---- mutating (confirm-gated) ----
