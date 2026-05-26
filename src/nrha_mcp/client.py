@@ -74,6 +74,20 @@ class NRClient:
         self._token = token
         self._client.headers["Authorization"] = f"Bearer {self._token}"
 
+    def comms_ws_url(self) -> str:
+        """Derive the /comms WebSocket URL from the admin base URL."""
+        base = self.url.rstrip("/")
+        if base.startswith("https"):
+            base = "wss" + base[len("https"):]
+        elif base.startswith("http"):
+            base = "ws" + base[len("http"):]
+        return base + "/comms"
+
+    async def get_ws_token(self) -> str | None:
+        """Bearer token for the /comms socket, or None if the admin API is open."""
+        await self._ensure_auth()
+        return self._token
+
     async def _do(self, method: str, path: str, **kwargs):
         """Send a request, refreshing the token once on a 401 (token mode only)."""
         await self._ensure_auth()
