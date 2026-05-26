@@ -34,6 +34,7 @@ EXPECTED_TOOLS = {
     "nr_get_global_context",
     "nr_capture_debug",
     "nr_get_runtime_events",
+    "nr_validate_flow",
     "nr_safe_deploy",
     "nr_safe_deploy_many",
     "nr_add_wire",
