@@ -121,7 +121,7 @@ async def get_services(ha_client, domain: str | None = None) -> dict:
     """List HA services. No domain -> compact index; a domain -> trimmed detail."""
     data = await ha_client.get_services()  # list of {domain, services}
     if domain is None:
-        index = {d.get("domain"): sorted((d.get("services") or {}).keys()) for d in data}
+        index = {d["domain"]: sorted((d.get("services") or {}).keys()) for d in data if d.get("domain")}
         return {"domains": index, "total_domains": len(index)}
     entry = next((d for d in data if d.get("domain") == domain), None)
     if entry is None:
