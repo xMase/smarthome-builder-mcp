@@ -1,0 +1,46 @@
+# Local full stack for testing on your machine:
+#     docker compose up -d --build      # builds the image, starts MCP (HTTP) + Node-RED
+#     docker compose down -v            # tear down
+#
+# Reads ./.env (copy it from .env.example). This file is the answer to
+# "how do we pass env to compose": `env_file` feeds your tunables into the
+# container, while the container invariants below override anything in .env.
+# For Portainer use deploy/portainer-stack.yml instead (set env via the UI).
+services:
+  nrha-mcp:
+    build: .
+    image: node-red-homeassistant-mcp:local
+    # Your tunables come from .env: DEPLOY_MODE, MCP_HTTP_PORT, HA_URL/HA_TOKEN,
+    # NR_TOKEN/NR_USER/NR_PASS, ...
+    env_file:
+      - .env
+    # Container invariants — these OVERRIDE .env (in Compose, `environment` wins
+    # over `env_file`). They are what makes the service reachable & correct:
+    environment:
+      MCP_TRANSPORT: "http"            # this stack runs the HTTP service
+      MCP_HTTP_HOST: "0.0.0.0"         # MUST bind all interfaces *inside* the container
+      NR_URL: "http://nodered:1880"    # reach Node-RED by service name, not localhost
+      BACKUP_DIR: "/data/backups"      # persist backups on the mounted volume
+    # Publish the port chosen in .env (interpolated from ./.env; default 8080).
+    # To restrict to localhost only, change to "127.0.0.1:${MCP_HTTP_PORT:-8080}:...".
+    ports:
+      - "${MCP_HTTP_PORT:-8080}:${MCP_HTTP_PORT:-8080}"
+    volumes:
+      - nrha_backups:/data
+    depends_on:
+      - nodered
+    restart: unless-stopped
+
+  # Throwaway Node-RED to test against. Delete this service and point NR_URL
+  # (override above) at your own Node-RED to use a real one.
+  nodered:
+    image: nodered/node-red:latest
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered_data:/data
+    restart: unless-stopped
+
+volumes:
+  nrha_backups:
+  nodered_data:

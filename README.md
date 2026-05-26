@@ -97,13 +97,31 @@ e.g. *"use nrha to summarise my Node-RED flows."*
 
 Run it as a long-lived HTTP service (streamable-HTTP at `/mcp`).
 
+**Quickest — local, reads your `.env`:**
+
+```bash
+cp .env.example .env            # then edit if you like (e.g. MCP_HTTP_PORT, DEPLOY_MODE)
+docker compose up -d --build    # starts the MCP service + a throwaway Node-RED
+# ... connect (below), then:  docker compose down -v
+```
+
+This serves MCP at `http://localhost:${MCP_HTTP_PORT}/mcp` (default `8080`). The root
+`docker-compose.yml` feeds your `.env` into the container via `env_file`, while **overriding the
+container invariants `.env` can't get right**: `MCP_HTTP_HOST=0.0.0.0` (must bind all interfaces
+inside the container — `127.0.0.1` would be unreachable), `NR_URL=http://nodered:1880` (reach
+Node-RED by service name, not `localhost`), and `BACKUP_DIR=/data/backups` (persist on the
+volume). In Compose, `environment:` wins over `env_file`, which is how those overrides work.
+
+**For Portainer:**
+
 1. **Build the image** on your Docker host:
    ```bash
    docker build -t node-red-homeassistant-mcp:local .
    ```
 2. **Deploy the stack** in Portainer: *Stacks → Add stack → Web editor*, paste
-   `deploy/portainer-stack.yml`, **Deploy the stack**. (Edit `NR_URL` to point at your own
-   Node-RED, or keep the bundled throwaway one.)
+   `deploy/portainer-stack.yml`, **Deploy the stack**. Set values via the stack's
+   **Environment variables** UI (a host-side `.env` file isn't available there). (Edit `NR_URL`
+   to point at your own Node-RED, or keep the bundled throwaway one.)
 3. **Connect your MCP client** to the HTTP endpoint:
    ```bash
    claude mcp add --transport http nrha http://<DOCKER_HOST_IP>:8080/mcp
