@@ -36,6 +36,10 @@ def _debug_frame(node_id="d1", z="tab1", name="dbg", msg="hi"):
             "data": {"id": node_id, "z": z, "name": name, "msg": msg, "format": "string"}}
 
 
+def _notification_frame(subtopic="runtime-deploy", data=None):
+    return {"topic": f"notification/{subtopic}", "data": data if data is not None else {"revision": "abc"}}
+
+
 @pytest.mark.asyncio
 async def test_capture_collects_debug(fake_client):
     comms = FakeComms([_debug_frame(msg="rain")])
@@ -93,3 +97,26 @@ async def test_capture_no_auth_when_open(fake_client):
     await runtime.capture_debug(
         fake_client, window_ms=500, max_messages=1, connect=_connect_factory(comms))
     assert not any("auth" in m for m in comms.sent)
+
+
+@pytest.mark.asyncio
+async def test_capture_notification(fake_client):
+    comms = FakeComms([_notification_frame("runtime-deploy", {"revision": "r1"})])
+    res = await runtime.capture_debug(
+        fake_client, topics=["notification"], window_ms=500, max_messages=1,
+        connect=_connect_factory(comms))
+    assert res["count"] == 1
+    ev = res["captured"][0]
+    assert ev["topic"] == "notification"
+    assert ev["subtopic"] == "runtime-deploy"
+    assert ev["data"] == {"revision": "r1"}
+    assert {"subscribe": "notification/#"} in comms.sent
+
+
+@pytest.mark.asyncio
+async def test_notification_dropped_by_node_filter(fake_client):
+    comms = FakeComms([_notification_frame()])
+    res = await runtime.capture_debug(
+        fake_client, topics=["notification"], window_ms=50, node_id="someNode",
+        connect=_connect_factory(comms))
+    assert res["count"] == 0
