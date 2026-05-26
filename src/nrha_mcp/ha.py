@@ -70,6 +70,11 @@ class HARestClient:
         r.raise_for_status()
         return r.json()
 
+    async def get_services(self) -> list[dict]:
+        r = await self._client.get("/api/services")
+        r.raise_for_status()
+        return r.json()
+
     async def close(self):
         await self._client.aclose()
 
@@ -102,3 +107,31 @@ async def get_entity_state(ha_client, entity_id: str) -> dict:
         "state": s.get("state"),
         "attributes": s.get("attributes", {}),
     }
+
+
+def _trim_field(f: dict) -> dict:
+    return {
+        "description": f.get("description", ""),
+        "example": f.get("example"),
+        "required": f.get("required", False),
+    }
+
+
+async def get_services(ha_client, domain: str | None = None) -> dict:
+    """List HA services. No domain -> compact index; a domain -> trimmed detail."""
+    data = await ha_client.get_services()  # list of {domain, services}
+    if domain is None:
+        index = {d.get("domain"): sorted((d.get("services") or {}).keys()) for d in data}
+        return {"domains": index, "total_domains": len(index)}
+    entry = next((d for d in data if d.get("domain") == domain), None)
+    if entry is None:
+        available = sorted(d["domain"] for d in data if d.get("domain"))
+        return {"domain": domain, "found": False, "available_domains": available}
+    services = {}
+    for name, svc in (entry.get("services") or {}).items():
+        services[name] = {
+            "name": svc.get("name", ""),
+            "description": svc.get("description", ""),
+            "fields": {fn: _trim_field(f) for fn, f in (svc.get("fields") or {}).items()},
+        }
+    return {"domain": domain, "services": services, "total_services": len(services)}
