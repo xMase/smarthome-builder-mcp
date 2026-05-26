@@ -84,6 +84,11 @@ class HARestClient:
         r.raise_for_status()
         return r.json()
 
+    async def ping(self) -> dict:
+        r = await self._client.get("/api/")
+        r.raise_for_status()
+        return r.json()
+
     async def close(self):
         await self._client.aclose()
 
