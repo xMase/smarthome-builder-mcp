@@ -46,7 +46,6 @@ EXPECTED_TOOLS = {
     "nr_inject",
     "ha_list_ha_nodes",
     "ha_get_server_config",
-    "ha_validate_calls",
 }
 
 

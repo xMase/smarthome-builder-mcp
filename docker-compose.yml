@@ -10,17 +10,10 @@ services:
   nrha-mcp:
     build: .
     image: node-red-homeassistant-mcp:local
-    # Your tunables come from .env: DEPLOY_MODE, MCP_HTTP_PORT, HA_URL/HA_TOKEN,
+    # Your tunables come from .env: DEPLOY_MODE, MCP_HTTP_PORT,
     # NR_TOKEN/NR_USER/NR_PASS, ...
     env_file:
       - .env
-    # Container invariants — these OVERRIDE .env (in Compose, `environment` wins
-    # over `env_file`). They are what makes the service reachable & correct:
-    environment:
-      MCP_TRANSPORT: "http"            # this stack runs the HTTP service
-      MCP_HTTP_HOST: "0.0.0.0"         # MUST bind all interfaces *inside* the container
-      NR_URL: "http://nodered:1880"    # reach Node-RED by service name, not localhost
-      BACKUP_DIR: "/data/backups"      # persist backups on the mounted volume
     # Publish the port chosen in .env (interpolated from ./.env; default 8080).
     # To restrict to localhost only, change to "127.0.0.1:${MCP_HTTP_PORT:-8080}:...".
     ports:
