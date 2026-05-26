@@ -292,6 +292,23 @@ async def ha_get_services(domain: str | None = None) -> str:
         await ha_client.close()
 
 
+@mcp.tool()
+async def ha_get_entity_history(entity_id: str, hours: int = 24, max_points: int = 200) -> str:
+    """Recent state history of a Home Assistant entity. Requires HA_URL + HA_TOKEN.
+
+    Returns up to `max_points` most-recent state changes over the last `hours`,
+    with `first`/`last` and a `total_changes` count. NOTE: HA keeps raw history for
+    a limited period (recorder default ~10 days); for wider spans (weeks/months)
+    use long-term statistics, not this tool."""
+    if not settings.ha_url or not settings.ha_token:
+        return _err("HA get_entity_history needs HA_URL and HA_TOKEN to be set.")
+    ha_client = ha.HARestClient(settings)
+    try:
+        return await _wrap(lambda: ha.get_entity_history(ha_client, entity_id, hours=hours, max_points=max_points))
+    finally:
+        await ha_client.close()
+
+
 def main():
     """Console-script entry point."""
     transport = "streamable-http" if settings.mcp_transport == "http" else "stdio"
