@@ -17,6 +17,9 @@ _EMPTY_HINT = (
     "(a function may have filtered it); node_id/flow_id filters are correct."
 )
 
+# Topic shorthands -> the actual /comms subscription string.
+_SUBSCRIBE_TOPIC = {"status": "status/#", "notification": "notification/#"}
+
 
 class _WebsocketsConn:
     """Adapter over a `websockets` client connection."""
@@ -72,6 +75,15 @@ def _normalize(frame: dict) -> dict | None:
             "text": status.get("text"),
             "ts": time.time(),
         }
+    if topic.startswith("notification/"):
+        return {
+            "topic": "notification",
+            "subtopic": topic.split("/", 1)[1],
+            "node_id": None,
+            "flow_id": None,
+            "data": data,
+            "ts": time.time(),
+        }
     return None
 
 
@@ -96,7 +108,7 @@ async def capture_debug(
         if token:
             await conn.send({"auth": token})
         for t in topics:
-            await conn.send({"subscribe": "status/#" if t == "status" else t})
+            await conn.send({"subscribe": _SUBSCRIBE_TOPIC.get(t, t)})
         if inject_node_id:
             await asyncio.sleep(0.1)  # let the subscription register before we trigger the inject
             await client.inject(inject_node_id)
