@@ -10,8 +10,8 @@ through Node-RED's Admin API — without breaking a working installation:
   edit is detected (never silently overwritten) and tab order is preserved.
 - **Preview, then confirm** — by default mutating tools return a diff *preview* and write nothing
   until you call them again with `confirm=true`.
-- **Home-Assistant-aware** — recognizes `node-red-contrib-home-assistant-websocket` nodes and can
-  validate their entity/service references against a live Home Assistant.
+- **Home-Assistant-aware** — recognizes `node-red-contrib-home-assistant-websocket` nodes and
+  lists their entity/service references.
 
 Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) (MIT). See `NOTICE`.
 
@@ -25,7 +25,7 @@ care about. Use at your own risk.
 
 ## Tools
 
-22 MCP tools, grouped:
+21 MCP tools, grouped:
 
 | Group | Tools |
 |---|---|
@@ -33,7 +33,7 @@ care about. Use at your own risk.
 | **Author & deploy** (confirm-gated, backup-first) | `nr_safe_deploy` (patch one node), `nr_safe_deploy_many` (atomic multi-node), `nr_add_wire` (idempotent), `nr_create_nodes`, `nr_delete_nodes` |
 | **Backups** | `nr_backup_flow`, `nr_list_backups`, `nr_restore_backup` |
 | **Modules & testing** | `nr_get_installed_modules`, `nr_install_module`, `nr_inject` |
-| **Home Assistant** | `ha_list_ha_nodes`, `ha_get_server_config`, `ha_validate_calls` |
+| **Home Assistant** | `ha_list_ha_nodes`, `ha_get_server_config` |
 
 ## How the safety model works
 
@@ -63,7 +63,6 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 | `NR_VERIFY_SSL` | `1` | `0` to skip TLS verification (self-signed certs) |
 | `DEPLOY_MODE` | `propose` | `propose` (preview, write on `confirm=true`) or `auto` |
 | `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written |
-| `HA_URL` / `HA_TOKEN` | — | Optional; enables `ha_validate_calls` |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` (streamable-HTTP) |
 | `MCP_HTTP_HOST` / `MCP_HTTP_PORT` | `0.0.0.0` / `8080` | Bind address/port in `http` mode |
 
@@ -149,7 +148,7 @@ docker compose down -v
 ```
 
 The script:
-- Lists the registered MCP tools and asserts every expected name (22) is present.
+- Lists the registered MCP tools and asserts every expected name (21) is present.
 - Calls `nr_get_flow_summary` and checks the response structure.
 - Seeds a tab + inject node via the Admin API if Node-RED is empty.
 - Calls `nr_safe_deploy` in propose mode (`confirm=false`) and asserts `deployed:false` plus a diff preview.

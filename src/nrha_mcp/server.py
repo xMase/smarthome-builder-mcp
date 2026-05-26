@@ -179,18 +179,6 @@ async def ha_get_server_config() -> str:
     return await _wrap(lambda: ha.get_server_config(client))
 
 
-@mcp.tool()
-async def ha_validate_calls() -> str:
-    """Validate api-call-service nodes against live HA (requires HA_URL + HA_TOKEN)."""
-    if not settings.ha_url or not settings.ha_token:
-        return _err("HA validation needs HA_URL and HA_TOKEN to be set.")
-    ha_client = ha.HARestClient(settings)
-    try:
-        return await _wrap(lambda: ha.validate_calls(client, ha_client))
-    finally:
-        await ha_client.close()
-
-
 def main():
     """Console-script entry point."""
     transport = "streamable-http" if settings.mcp_transport == "http" else "stdio"
