@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from .client import NRConflictError
+from .client import NRConflictError, NRError
 
 
 def _now_iso() -> str:
@@ -65,3 +65,42 @@ async def commit(client, store, settings, *, rebuild, summary, confirm=False):
         "summary": summary,
         "changes": preview,
     }
+
+
+def _summary_node(node: dict) -> dict:
+    return {"id": node.get("id"), "type": node.get("type"), "name": node.get("name", "")}
+
+
+def _load_backup(store, path: str) -> list[dict]:
+    try:
+        return store.restore(path)
+    except ValueError as e:
+        raise NRError(str(e))
+
+
+def _enrich(raw: dict, before: list[dict], after: list[dict], *, before_label: str, after_label: str) -> dict:
+    bmap = {n["id"]: n for n in before if "id" in n}
+    amap = {n["id"]: n for n in after if "id" in n}
+    added = [_summary_node(amap[i]) for i in raw["added"] if i in amap]
+    removed = [_summary_node(bmap[i]) for i in raw["removed"] if i in bmap]
+    return {
+        "before": before_label,
+        "after": after_label,
+        "summary": {"added": len(added), "removed": len(removed), "changed": len(raw["changed"])},
+        "added": added,
+        "removed": removed,
+        "changed": raw["changed"],
+    }
+
+
+async def diff_backup(client, store, *, path: str, path_b: str | None = None) -> dict:
+    """Diff a backup against the current flows (path_b=None) or against another backup."""
+    before = _load_backup(store, path)
+    if path_b is None:
+        after, _ = await client.get_flows()
+        after_label = "current"
+    else:
+        after = _load_backup(store, path_b)
+        after_label = path_b
+    raw = diff_flows(before, after)
+    return _enrich(raw, before, after, before_label=path, after_label=after_label)
