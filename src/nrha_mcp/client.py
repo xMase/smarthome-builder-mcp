@@ -74,21 +74,31 @@ class NRClient:
         self._token = token
         self._client.headers["Authorization"] = f"Bearer {self._token}"
 
-    async def get_flows(self) -> tuple[list[dict], str]:
+    async def _do(self, method: str, path: str, **kwargs):
+        """Send a request, refreshing the token once on a 401 (token mode only)."""
         await self._ensure_auth()
-        r = await self._client.get("/flows", headers={"Node-RED-API-Version": "v2"})
+        resp = await self._client.request(method, path, **kwargs)
+        if resp.status_code == 401 and self._auth_mode == "token" and self._user:
+            # bearer may have expired — re-login once and retry
+            self._token = None
+            self._client.headers.pop("Authorization", None)
+            await self._ensure_auth()
+            resp = await self._client.request(method, path, **kwargs)
+        return resp
+
+    async def get_flows(self) -> tuple[list[dict], str]:
+        r = await self._do("GET", "/flows", headers={"Node-RED-API-Version": "v2"})
         self._check_response(r)
         data = r.json()
         return data.get("flows", []), data.get("rev", "")
 
     async def post_flows(self, flows: list[dict], rev: str) -> str:
-        await self._ensure_auth()
         headers = {
             "Node-RED-API-Version": "v2",
             "Node-RED-Deployment-Type": "full",
             "Content-Type": "application/json",
         }
-        r = await self._client.post("/flows", json={"rev": rev, "flows": flows}, headers=headers)
+        r = await self._do("POST", "/flows", json={"rev": rev, "flows": flows}, headers=headers)
         if r.status_code == 409:
             raise NRConflictError("Flow modified by another client (rev mismatch). Retry with fresh GET.")
         self._check_response(r)
@@ -96,20 +106,17 @@ class NRClient:
         return data.get("rev", "")
 
     async def get_context(self, flow_id: str) -> dict:
-        await self._ensure_auth()
-        r = await self._client.get(f"/context/flow/{flow_id}")
+        r = await self._do("GET", f"/context/flow/{flow_id}")
         self._check_response(r)
         return r.json()
 
     async def get_global_context(self) -> dict:
-        await self._ensure_auth()
-        r = await self._client.get("/context/global")
+        r = await self._do("GET", "/context/global")
         self._check_response(r)
         return r.json()
 
     async def inject(self, node_id: str) -> bool:
-        await self._ensure_auth()
-        r = await self._client.post(f"/inject/{node_id}")
+        r = await self._do("POST", f"/inject/{node_id}")
         if r.status_code == 200:
             return True
         if r.status_code == 404:
@@ -117,16 +124,15 @@ class NRClient:
         raise NRError(f"Inject failed: {r.status_code} {r.text}")
 
     async def get_nodes(self) -> list[dict]:
-        await self._ensure_auth()
-        r = await self._client.get(
-            "/nodes", headers={"Accept": "application/json", "Node-RED-API-Version": "v2"}
+        r = await self._do(
+            "GET", "/nodes", headers={"Accept": "application/json", "Node-RED-API-Version": "v2"}
         )
         self._check_response(r)
         return r.json()
 
     async def install_module(self, module_name: str) -> dict:
-        await self._ensure_auth()
-        r = await self._client.post(
+        r = await self._do(
+            "POST",
             "/nodes",
             json={"module": module_name},
             headers={"Accept": "application/json", "Content-Type": "application/json"},
