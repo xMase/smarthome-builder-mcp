@@ -112,3 +112,10 @@ async def test_validate_flow_uses_registered_types(fake_client):
     res = await validate.validate_flow(fake_client, nodes=new)
     assert any(w["code"] == "unregistered_type" and w["node_id"] == "x1"
                for w in res["warnings"])
+
+
+def test_malformed_flat_wires_no_false_positive():
+    # a flat `wires` (agent mistake) must not be iterated char-by-char into bogus findings
+    flows = [_tab(), {"id": "n1", "type": "function", "z": "t1", "wires": ["n9"]}]
+    res = validate_flows(flows)
+    assert not any(e["code"] == "wire_to_missing" for e in res["errors"])

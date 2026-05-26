@@ -48,6 +48,8 @@ def validate_flows(flows, *, focus_ids=None, registered_types=None):
             errors.append(_finding("bad_z", nid,
                                    f"Node '{nid}' has z='{z}', not an existing tab/subflow", focus_ids))
         for out in n.get("wires", []) or []:
+            if not isinstance(out, list):  # tolerate a malformed (flat) wires from agent input
+                continue
             for target in out:
                 if target not in ids:
                     errors.append(_finding("wire_to_missing", nid,
