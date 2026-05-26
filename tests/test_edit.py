@@ -121,3 +121,19 @@ async def test_restore_backup_redeploys(fake_client, settings_auto, tmp_path):
     assert res["deployed"] is True
     deployed_flows, _ = await fake_client.get_flows()
     assert deployed_flows == original_flows
+
+
+@pytest.mark.asyncio
+async def test_create_tab_and_nodes_in_one_call(fake_client, settings_auto, tmp_path):
+    # A new tab plus nodes that target it, all in a single create — the nodes'
+    # `z` must validate against the tab being created in the same batch.
+    store = BackupStore(str(tmp_path))
+    res = await edit.create_nodes(fake_client, store, settings_auto, nodes=[
+        {"id": "tabX", "type": "tab", "label": "MCP Test"},
+        {"id": "injX", "type": "inject", "z": "tabX", "name": "tick", "wires": [["dbgX"]]},
+        {"id": "dbgX", "type": "debug", "z": "tabX", "name": "dbg", "wires": [[]]},
+    ], confirm=True)
+    assert res["deployed"] is True
+    flows, _ = await fake_client.get_flows()
+    ids = {f["id"] for f in flows}
+    assert {"tabX", "injX", "dbgX"} <= ids

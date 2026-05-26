@@ -88,7 +88,9 @@ async def create_nodes(client, store, settings, *, nodes, confirm=False, descrip
             raise NRError(f"Node '{n['id']}' missing 'z' (target tab ID)")
 
     def rebuild(flows):
-        tab_ids = {f["id"] for f in flows if f.get("type") == "tab"}
+        # tabs created in THIS call are valid targets for nodes in the same batch
+        new_tab_ids = {n["id"] for n in nodes if n.get("type") == "tab"}
+        tab_ids = {f["id"] for f in flows if f.get("type") == "tab"} | new_tab_ids
         existing = {f["id"] for f in flows}
         for n in nodes:
             z = n.get("z", "")
