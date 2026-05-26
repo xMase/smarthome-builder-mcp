@@ -149,3 +149,39 @@ async def test_post_flows_empty_body_ok():
     result = await c.post_flows([], "r")
     assert result == ""
     await c.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_token_mode_refreshes_on_401():
+    """In token mode, a 401 from the API triggers re-login and a single retry."""
+    auth_route = respx.post("http://nr.test/auth/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "tok"})
+    )
+    flows_route = respx.get("http://nr.test/flows").mock(
+        side_effect=[
+            httpx.Response(401),
+            httpx.Response(200, json={"rev": "r", "flows": []}),
+        ]
+    )
+    c = make_client(nr_user="u", nr_pass="p", nr_auth="token")
+    flows, rev = await c.get_flows()
+    assert rev == "r"
+    assert flows == []
+    # initial login + one refresh = 2 calls to /auth/token
+    assert auth_route.call_count == 2
+    # GET /flows was attempted twice (401 then 200)
+    assert flows_route.call_count == 2
+    await c.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_basic_mode_does_not_refresh_on_401():
+    """In basic mode, a 401 is NOT retried — it raises NRAuthError immediately."""
+    respx.get("http://nr.test/flows").mock(return_value=httpx.Response(401))
+    # /auth/token is intentionally NOT registered; respx would error if it were called
+    c = make_client(nr_user="u", nr_pass="p")  # default nr_auth="basic"
+    with pytest.raises(NRAuthError):
+        await c.get_flows()
+    await c.close()
