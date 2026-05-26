@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+tests/
+docs/
+backups/
+*.egg-info/
+dist/
+build/
+docker-compose.dev.yml
