@@ -48,8 +48,8 @@ dependencies = [
 
 - [ ] **Step 2: Install it into the dev venv**
 
-Run: `./.venv/bin/pip install "websockets>=12"`
-Expected: ends with `Successfully installed websockets-<ver>`
+Run: `uv pip install --python .venv/bin/python "websockets>=12"` (the venv is uv-created and has no `pip`)
+Expected: ends with `+ websockets==<ver>`
 
 - [ ] **Step 3: Verify the import**
 
