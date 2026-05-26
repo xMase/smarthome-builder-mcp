@@ -160,3 +160,12 @@ async def test_get_services_unknown_domain():
     res = await ha.get_services(fake, "nope")
     assert res["found"] is False
     assert res["available_domains"] == ["light", "switch"]
+
+
+@pytest.mark.asyncio
+async def test_get_services_index_skips_entry_without_domain():
+    fake = FakeHAClient(services=[{"services": {"x": {}}},
+                                  {"domain": "light", "services": {"turn_on": {}}}])
+    res = await ha.get_services(fake)
+    assert res["domains"] == {"light": ["turn_on"]}
+    assert res["total_domains"] == 1
