@@ -25,6 +25,33 @@ NR_URL=http://YOUR_NODE_RED:1880 NR_USER=admin NR_PASS=... node-red-homeassistan
 
 Configure your MCP client to launch the command with the env vars above.
 
+## Deploy on Docker / Portainer (HTTP)
+
+Run it as a long-lived HTTP service (streamable-HTTP at `/mcp`).
+
+**1. Build the image on your Docker host:**
+
+```bash
+docker build -t node-red-homeassistant-mcp:local .
+```
+
+**2. Deploy the stack in Portainer:** *Stacks → Add stack → Web editor*, paste
+`deploy/portainer-stack.yml`, and **Deploy the stack**. (Edit `NR_URL` to point at your own
+Node-RED, or keep the bundled throwaway one.)
+
+**3. Connect your MCP client** to the HTTP endpoint. For Claude Code:
+
+```bash
+claude mcp add --transport http home-node-red http://<DOCKER_HOST_IP>:8080/mcp
+```
+
+Notes:
+- The container talks to Node-RED at `NR_URL`. On the same Docker network use the service name
+  (`http://nodered:1880`); for an external/Home Assistant Node-RED use its LAN URL + auth
+  (`NR_TOKEN` or `NR_USER`/`NR_PASS`).
+- `DEPLOY_MODE=propose` (default) previews changes; call a mutating tool again with
+  `confirm=true` to apply. Backups are written under the `/data` volume.
+
 ## Manual verification (end-to-end smoke test)
 
 A self-contained smoke script exercises the server over the real stdio transport against a
