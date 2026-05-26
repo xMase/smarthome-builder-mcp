@@ -31,6 +31,11 @@ class FakeNRClient:
         self.ws_token = None      # token returned by get_ws_token()
         self.installed = []        # module names installed
         self.post_calls = []       # list of (flows, rev) posted
+        self.settings_payload = {
+            "version": "4.1.10",
+            "runtimeState": {"enabled": True, "state": "start"},
+            "context": {"default": "default", "stores": ["store", "default"]},
+        }
 
     async def get_flows(self):
         return copy.deepcopy(self._flows), self._rev
@@ -58,6 +63,9 @@ class FakeNRClient:
 
     async def get_nodes(self):
         return self.nodes
+
+    async def get_settings(self):
+        return self.settings_payload
 
     async def install_module(self, module_name):
         self.installed.append(module_name)
