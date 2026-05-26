@@ -8,11 +8,11 @@ def test_tools_registered():
     expected = {
         "nr_get_flow_summary", "nr_get_flow", "nr_search_nodes", "nr_get_function_code",
         "nr_get_node_config", "nr_get_flow_context", "nr_get_global_context",
-        "nr_capture_debug", "nr_safe_deploy", "nr_safe_deploy_many", "nr_add_wire",
+        "nr_capture_debug", "nr_get_runtime_events", "nr_safe_deploy", "nr_safe_deploy_many", "nr_add_wire",
         "nr_create_nodes", "nr_delete_nodes", "nr_get_installed_modules", "nr_install_module",
         "nr_inject", "ha_list_ha_nodes", "ha_get_server_config",
         "nr_backup_flow", "nr_list_backups", "nr_restore_backup",
         "ha_search_entities", "ha_get_state",
     }
     assert expected.issubset(names)
-    assert len(names) == 23
+    assert len(names) == 24
