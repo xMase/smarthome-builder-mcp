@@ -29,21 +29,27 @@ class NRClient:
         self._token: str | None = settings.nr_token or None
         self._user: str | None = settings.nr_user or None
         self._pass: str | None = settings.nr_pass or None
+        self._auth_mode: str = settings.nr_auth
 
         headers: dict[str, str] = {}
+        basic_auth: httpx.BasicAuth | None = None
+
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
+        elif self._user and self._auth_mode == "basic":
+            basic_auth = httpx.BasicAuth(self._user, self._pass or "")
 
         self._client = httpx.AsyncClient(
             base_url=self.url,
             headers=headers,
+            auth=basic_auth,
             timeout=30.0,
             verify=settings.nr_verify_ssl,
         )
 
     async def _ensure_auth(self) -> None:
-        """Lazily exchange NR_USER/NR_PASS for a bearer token on first call."""
-        if self._token or not self._user:
+        """Lazily exchange NR_USER/NR_PASS for a bearer token on first call (token mode only)."""
+        if self._token or not self._user or self._auth_mode != "token":
             return
         r = await self._client.post(
             "/auth/token",

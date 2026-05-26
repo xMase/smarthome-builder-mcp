@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     nr_token: str = ""
     nr_user: str = ""
     nr_pass: str = ""
+    nr_auth: Literal["basic", "token"] = "basic"
     nr_verify_ssl: bool = True
 
     # Safety
