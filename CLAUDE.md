@@ -72,7 +72,7 @@ So default behavior is a two-call loop: call a tool → read the preview → cal
 
 ## Conventions & gotchas
 
-- **The tool set (currently 23) is asserted in TWO places.** When you add/remove/rename a tool you
+- **The registered tool set (and its exact count) is asserted in TWO places.** When you add/remove/rename a tool you
   must update all three: the `@mcp.tool()` in `server.py`, the `expected` set **and** the
   `len(names) == N` count in `tests/test_server_smoke.py`, and `EXPECTED_TOOLS` in
   `scripts/smoke_e2e.py`. Missing one breaks the smoke test.
