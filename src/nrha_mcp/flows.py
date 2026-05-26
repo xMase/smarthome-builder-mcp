@@ -131,25 +131,25 @@ async def get_node_config(client: NRClient, node_id: str) -> dict:
     return result
 
 
+def _read_context(data: dict, *, scope: dict, key: str | None, not_found: str) -> dict:
+    stores = {name: (c or {}) for name, c in data.items() if isinstance(c, dict)}
+    if key is None:
+        return {**scope, "stores": {name: list(c.keys()) for name, c in stores.items()}}
+    order = (["default"] if "default" in stores else []) + [n for n in stores if n != "default"]
+    for name in order:
+        if key in stores[name]:
+            return {**scope, "key": key, "store": name, "value": stores[name][key].get("msg")}
+    raise NRNotFoundError(not_found)
+
+
 async def get_flow_context(client: NRClient, flow_id: str, key: str | None = None) -> dict:
     data = await client.get_context(flow_id)
-    memory = data.get("memory", {})
-    if key:
-        if key not in memory:
-            raise NRNotFoundError(f"Context key not found: '{key}'")
-        return {"flow_id": flow_id, "key": key, "value": memory[key].get("msg")}
-    return {"flow_id": flow_id, "keys": list(memory.keys())}
+    return _read_context(data, scope={"flow_id": flow_id}, key=key,
+                         not_found=f"Context key not found: '{key}'")
 
 
 async def get_global_context(client: NRClient, key: str | None = None) -> dict:
     data = await client.get_global_context()
-    memory = data.get("memory", {})
-    if key:
-        if key not in memory:
-            raise NRNotFoundError(f"Global context key not found: '{key}'")
-        return {"scope": "global", "key": key, "value": memory[key].get("msg")}
-    return {"scope": "global", "keys": list(memory.keys())}
+    return _read_context(data, scope={"scope": "global"}, key=key,
+                         not_found=f"Global context key not found: '{key}'")
 
-
-async def get_debug_output(client: NRClient, flow_id: str, key: str | None = None) -> dict:
-    return await get_flow_context(client, flow_id, key)
