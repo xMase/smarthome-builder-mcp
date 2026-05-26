@@ -50,9 +50,39 @@ async def test_auth_error_maps():
     await c.close()
 
 
-def test_basic_auth_used():
+def test_user_pass_defers_login():
+    """username/password no longer sets BasicAuth; Authorization header absent at construction."""
     c = make_client(nr_user="u", nr_pass="p")
-    assert c._client.auth is not None
+    assert c._client.auth is None
+    assert "authorization" not in c._client.headers
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_password_login_then_authorizes_requests():
+    """On first API call the client POSTs /auth/token, then uses the returned bearer."""
+    respx.post("http://nr.test/auth/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "tok", "token_type": "Bearer"})
+    )
+    respx.get("http://nr.test/flows").mock(
+        return_value=httpx.Response(200, json={"rev": "r", "flows": []})
+    )
+    c = make_client(nr_user="u", nr_pass="p")
+    await c.get_flows()
+    flows_request = respx.routes[1].calls.last.request
+    assert flows_request.headers["Authorization"] == "Bearer tok"
+    await c.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_login_failure_raises():
+    """Non-200 from /auth/token raises NRAuthError."""
+    respx.post("http://nr.test/auth/token").mock(return_value=httpx.Response(401))
+    c = make_client(nr_user="u", nr_pass="p")
+    with pytest.raises(NRAuthError):
+        await c.get_flows()
+    await c.close()
 
 
 @respx.mock

@@ -58,7 +58,7 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 |---|---|---|
 | `NR_URL` | `http://localhost:1880` | Node-RED base URL |
 | `NR_TOKEN` | — | Bearer token for the Admin API |
-| `NR_USER` / `NR_PASS` | — | Basic-auth (used only if no token) |
+| `NR_USER` / `NR_PASS` | — | Node-RED login credentials (HA add-on: your HA username/password); exchanged for a bearer via `POST /auth/token` on the first call (used only if no token) |
 | `NR_VERIFY_SSL` | `1` | `0` to skip TLS verification (self-signed certs) |
 | `DEPLOY_MODE` | `propose` | `propose` (preview, write on `confirm=true`) or `auto` |
 | `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written |
@@ -66,7 +66,7 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` (streamable-HTTP) |
 | `MCP_HTTP_HOST` / `MCP_HTTP_PORT` | `0.0.0.0` / `8080` | Bind address/port in `http` mode |
 
-Auth precedence: `NR_TOKEN` → `NR_USER`/`NR_PASS` → none.
+Auth precedence: `NR_TOKEN` → `NR_USER`/`NR_PASS` (password-grant via `/auth/token`) → none.
 
 ## Install & run
 
