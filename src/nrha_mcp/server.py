@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from .config import Settings
 from .client import NRClient, NRError
 from .backup import BackupStore
-from . import flows, edit, modules, ha, runtime, validate
+from . import flows, edit, modules, ha, runtime, validate, deploy
 
 settings = Settings()
 client = NRClient(settings)
@@ -205,6 +205,17 @@ async def nr_list_backups() -> str:
 async def nr_restore_backup(path: str, confirm: bool = False) -> str:
     """Restore flows from a backup file. Confirm-gated, backup-first (the current state is itself snapshotted before overwrite)."""
     return await _wrap(lambda: edit.restore_backup(client, store, settings, path=path, confirm=confirm))
+
+
+@mcp.tool()
+async def nr_diff(path: str, path_b: str | None = None) -> str:
+    """Diff a backup against the current flows, or against another backup.
+
+    `path` is a backup path from nr_list_backups. With only `path`: before=that
+    backup, after=current flows (what changed since the snapshot). With `path_b`:
+    before=path, after=path_b. Returns added/removed (each with id/type/name) and
+    field-level `changed`, plus a `summary` count."""
+    return await _wrap(lambda: deploy.diff_backup(client, store, path=path, path_b=path_b))
 
 
 # ---- modules / inject ----
