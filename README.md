@@ -137,14 +137,14 @@ A self-contained smoke script exercises the server over the real stdio transport
 disposable Node-RED instance. Docker is the only extra requirement.
 
 ```bash
-# 1. Start a throwaway Node-RED
-docker compose -f docker-compose.dev.yml up -d
+# 1. Start just the throwaway Node-RED (the `nodered` service of docker-compose.yml)
+docker compose up -d nodered
 
 # 2. Wait ~10s for Node-RED to be ready, then run the smoke script
 NR_URL=http://localhost:1880 .venv/bin/python scripts/smoke_e2e.py
 
 # 3. Tear down (removes the volume too)
-docker compose -f docker-compose.dev.yml down -v
+docker compose down -v
 ```
 
 The script:
