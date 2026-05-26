@@ -13,7 +13,13 @@ settings = Settings()
 client = NRClient(settings)
 store = BackupStore(settings.backup_dir)
 
-mcp = FastMCP("node-red-homeassistant-mcp", json_response=True)
+mcp = FastMCP(
+    "node-red-homeassistant-mcp",
+    json_response=True,
+    host=settings.mcp_http_host,
+    port=settings.mcp_http_port,
+    stateless_http=True,
+)
 
 
 def _ok(result: dict) -> str:
@@ -187,7 +193,7 @@ async def ha_validate_calls() -> str:
 
 def main():
     """Console-script entry point."""
-    transport = "stdio" if settings.mcp_transport == "stdio" else "sse"
+    transport = "streamable-http" if settings.mcp_transport == "http" else "stdio"
     mcp.run(transport=transport)
 
 
