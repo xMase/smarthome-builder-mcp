@@ -150,6 +150,3 @@ async def get_global_context(client: NRClient, key: str | None = None) -> dict:
         return {"scope": "global", "key": key, "value": memory[key].get("msg")}
     return {"scope": "global", "keys": list(memory.keys())}
 
-
-async def get_debug_output(client: NRClient, flow_id: str, key: str | None = None) -> dict:
-    return await get_flow_context(client, flow_id, key)
