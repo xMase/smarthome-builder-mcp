@@ -520,15 +520,22 @@ async def get_debug_output(client: NRClient, flow_id: str, key: str | None = Non
 Run: `./.venv/bin/pytest tests/test_server_smoke.py -v`
 Expected: 1 passed
 
-- [ ] **Step 7: Verify no other references to the removed name**
+- [ ] **Step 7: Update the e2e smoke script's tool set**
 
-Run: `grep -rn "debug_output" src tests`
+`scripts/smoke_e2e.py` keeps its own `EXPECTED_TOOLS` set (line ~27) and asserts every expected
+tool is registered. Edit that set: remove the line `"nr_get_debug_output",` and add
+`"nr_capture_debug",`. (This script is run manually against a live Node-RED, not by pytest, but
+must stay correct — it is the second place the tool set is hardcoded.)
+
+- [ ] **Step 8: Verify no other references to the removed name**
+
+Run: `grep -rn "debug_output" src tests scripts`
 Expected: no output (empty).
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/nrha_mcp/server.py src/nrha_mcp/flows.py tests/test_server_smoke.py
+git add src/nrha_mcp/server.py src/nrha_mcp/flows.py tests/test_server_smoke.py scripts/smoke_e2e.py
 git commit -m "feat(server): add nr_capture_debug, remove misleading nr_get_debug_output"
 ```
 
