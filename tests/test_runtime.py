@@ -120,3 +120,22 @@ async def test_notification_dropped_by_node_filter(fake_client):
         fake_client, topics=["notification"], window_ms=50, node_id="someNode",
         connect=_connect_factory(comms))
     assert res["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_get_runtime_events_returns_events(fake_client):
+    comms = FakeComms([_notification_frame("runtime-state", {"state": "start"})])
+    res = await runtime.get_runtime_events(
+        fake_client, window_ms=500, max_messages=1, connect=_connect_factory(comms))
+    assert res["count"] == 1
+    assert res["events"][0]["subtopic"] == "runtime-state"
+    assert "hint" not in res
+
+
+@pytest.mark.asyncio
+async def test_get_runtime_events_empty_has_hint(fake_client):
+    comms = FakeComms([])
+    res = await runtime.get_runtime_events(
+        fake_client, window_ms=50, connect=_connect_factory(comms))
+    assert res["count"] == 0
+    assert "hint" in res

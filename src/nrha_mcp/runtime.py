@@ -141,3 +141,25 @@ async def capture_debug(
     if not captured:
         result["hint"] = _EMPTY_HINT
     return result
+
+
+async def get_runtime_events(
+    client: NRClient,
+    *,
+    window_ms: int = 2000,
+    max_messages: int = 100,
+    connect: Callable[[NRClient], Awaitable] | None = None,
+) -> dict:
+    """Capture only the /comms notification channel (runtime/system events)."""
+    res = await capture_debug(
+        client, topics=["notification"], window_ms=window_ms,
+        max_messages=max_messages, connect=connect)
+    events = res["captured"]
+    out = {"events": events, "count": len(events), "window_ms": window_ms}
+    if not events:
+        out["hint"] = (
+            "No runtime events in the window. That is normal when nothing happened "
+            "(no deploy, no state change, no module/node error). Trigger the action "
+            "during the window, or widen window_ms."
+        )
+    return out
