@@ -7,9 +7,11 @@ so tests feed frames without a live server (mirrors runtime.py).
 import json
 from datetime import datetime, timedelta, timezone
 
+from .client import NRError
 
-class HAStatsError(Exception):
-    """HA WebSocket auth or statistics-command failure."""
+
+class HAStatsError(NRError):
+    """HA WebSocket auth or statistics-command failure (an expected, surfaced error)."""
 
 
 def _ws_url(ha_url: str) -> str:

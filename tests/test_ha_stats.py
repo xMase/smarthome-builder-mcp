@@ -103,3 +103,16 @@ async def test_statistics_auth_invalid_raises():
         await ha_stats.get_entity_statistics(
             _settings(), "sensor.x", connect=_connect_factory(conn))
     assert conn.closed is True
+
+
+@pytest.mark.asyncio
+async def test_statistics_skips_non_result_frames():
+    # an interleaved event frame before the result must be skipped, not break parsing
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              {"id": 7, "type": "event", "event": {}},
+              _result_frame("sensor.x", [_bucket(1700000000000, 1.0, 0.0, 2.0)])]
+    conn = FakeHAWsConn(frames)
+    res = await ha_stats.get_entity_statistics(
+        _settings(), "sensor.x", connect=_connect_factory(conn))
+    assert res["total_buckets"] == 1
+    assert res["buckets"][0]["mean"] == 1.0
