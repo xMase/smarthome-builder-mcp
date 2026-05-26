@@ -97,8 +97,8 @@ async def capture_debug(
             await conn.send({"auth": token})
         for t in topics:
             await conn.send({"subscribe": "status/#" if t == "status" else t})
-        await asyncio.sleep(0.1)  # let the subscription register before triggering
         if inject_node_id:
+            await asyncio.sleep(0.1)  # let the subscription register before we trigger the inject
             await client.inject(inject_node_id)
             injected = inject_node_id
         deadline = time.monotonic() + window_ms / 1000
