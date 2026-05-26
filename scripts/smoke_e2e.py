@@ -51,6 +51,7 @@ EXPECTED_TOOLS = {
     "ha_get_server_config",
     "ha_search_entities",
     "ha_get_state",
+    "ha_get_services",
 }
 
 

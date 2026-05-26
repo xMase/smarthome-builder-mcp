@@ -275,6 +275,23 @@ async def ha_get_state(entity_id: str) -> str:
         await ha_client.close()
 
 
+@mcp.tool()
+async def ha_get_services(domain: str | None = None) -> str:
+    """List Home Assistant services for authoring call-service nodes. Requires HA_URL + HA_TOKEN.
+
+    Without `domain`: a compact index {domain: [service names]}. With `domain`:
+    that domain's services with description and fields (each field:
+    description/example/required). Use it to fill a call-service node's
+    domain/service/data correctly."""
+    if not settings.ha_url or not settings.ha_token:
+        return _err("HA get_services needs HA_URL and HA_TOKEN to be set.")
+    ha_client = ha.HARestClient(settings)
+    try:
+        return await _wrap(lambda: ha.get_services(ha_client, domain))
+    finally:
+        await ha_client.close()
+
+
 def main():
     """Console-script entry point."""
     transport = "streamable-http" if settings.mcp_transport == "http" else "stdio"
