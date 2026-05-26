@@ -8,5 +8,6 @@ backups/
 *.egg-info/
 dist/
 build/
-docker-compose.dev.yml
+docker-compose*.yml
+deploy/
 .env
