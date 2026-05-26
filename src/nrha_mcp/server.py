@@ -13,8 +13,21 @@ settings = Settings()
 client = NRClient(settings)
 store = BackupStore(settings.backup_dir)
 
+HA_AUTHORING_GUIDANCE = (
+    "When authoring Node-RED flows that use Home Assistant "
+    "(node-red-contrib-home-assistant-websocket) nodes: "
+    "(1) use ha_search_entities to resolve the correct entity_id; "
+    "(2) reuse an existing source node when one already provides the data "
+    "(e.g. an existing poll-state for a sensor) instead of adding a new one; "
+    "(3) to build a NEW HA node, first nr_search_nodes for an existing node of the "
+    "same type and clone its schema; "
+    "(4) avoid deprecated fields like state_type/stateType — use outputProperties; "
+    "(5) get the HA server config id via ha_get_server_config."
+)
+
 mcp = FastMCP(
     "node-red-homeassistant-mcp",
+    instructions=HA_AUTHORING_GUIDANCE,
     json_response=True,
     host=settings.mcp_http_host,
     port=settings.mcp_http_port,
@@ -112,7 +125,8 @@ async def nr_add_wire(from_id: str, output_index: int, to_id: str, confirm: bool
 
 @mcp.tool()
 async def nr_create_nodes(nodes: list[dict], confirm: bool = False, description: str | None = None) -> str:
-    """Create nodes/groups (each needs id,type and z for tab nodes). Confirm-gated, backup-first."""
+    """Create nodes/groups (each needs id,type and z for tab nodes). Confirm-gated, backup-first.
+    For HA nodes: clone the schema of an existing same-type node (nr_search_nodes) and prefer reusing existing source nodes; avoid deprecated fields like state_type (use outputProperties)."""
     return await _wrap(lambda: edit.create_nodes(client, store, settings, nodes=nodes, confirm=confirm, description=description))
 
 
@@ -177,6 +191,31 @@ async def ha_list_ha_nodes() -> str:
 async def ha_get_server_config() -> str:
     """List the Home Assistant server config nodes Node-RED uses."""
     return await _wrap(lambda: ha.get_server_config(client))
+
+
+@mcp.tool()
+async def ha_search_entities(query: str, limit: int = 20) -> str:
+    """Search live Home Assistant entities by entity_id or friendly name (e.g. "umidità bagno").
+    Use this to resolve the correct entity_id BEFORE authoring HA nodes. Requires HA_URL + HA_TOKEN."""
+    if not settings.ha_url or not settings.ha_token:
+        return _err("HA entity search needs HA_URL and HA_TOKEN to be set.")
+    ha_client = ha.HARestClient(settings)
+    try:
+        return await _wrap(lambda: ha.search_entities(ha_client, query, limit))
+    finally:
+        await ha_client.close()
+
+
+@mcp.tool()
+async def ha_get_state(entity_id: str) -> str:
+    """Get the current state + attributes of a Home Assistant entity. Requires HA_URL + HA_TOKEN."""
+    if not settings.ha_url or not settings.ha_token:
+        return _err("HA get_state needs HA_URL and HA_TOKEN to be set.")
+    ha_client = ha.HARestClient(settings)
+    try:
+        return await _wrap(lambda: ha.get_entity_state(ha_client, entity_id))
+    finally:
+        await ha_client.close()
 
 
 def main():

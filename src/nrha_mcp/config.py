@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     deploy_mode: Literal["propose", "auto"] = "propose"
     backup_dir: str = "./backups"
 
+    # Home Assistant REST API (entity discovery for authoring)
+    # HA base URL is :8123, distinct from Node-RED's :1880
+    ha_url: str = ""
+    ha_token: str = ""
+
     # Transport
     mcp_transport: Literal["stdio", "http"] = "stdio"
     mcp_http_host: str = "0.0.0.0"
