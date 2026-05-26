@@ -1,0 +1,39 @@
+# Portainer: Stacks -> Add stack -> Web editor -> paste this -> Deploy.
+# The image `node-red-homeassistant-mcp:local` must exist on the Docker host
+# (build it there first:  docker build -t node-red-homeassistant-mcp:local .).
+services:
+  nrha-mcp:
+    image: node-red-homeassistant-mcp:local
+    environment:
+      NR_URL: "http://nodered:1880"   # point at your own Node-RED to skip the test one
+      NR_TOKEN: ""
+      NR_USER: ""
+      NR_PASS: ""
+      DEPLOY_MODE: "propose"           # preview-first; set "auto" to deploy without confirm
+      MCP_TRANSPORT: "http"
+      MCP_HTTP_HOST: "0.0.0.0"
+      MCP_HTTP_PORT: "8080"
+      BACKUP_DIR: "/data/backups"
+    ports:
+      - "8080:8080"
+    volumes:
+      - nrha_backups:/data
+    restart: unless-stopped
+    networks: [nrha]
+
+  # Optional throwaway Node-RED for testing. Delete this service to use your own.
+  nodered:
+    image: nodered/node-red:latest
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered_data:/data
+    restart: unless-stopped
+    networks: [nrha]
+
+networks:
+  nrha:
+
+volumes:
+  nrha_backups:
+  nodered_data:
