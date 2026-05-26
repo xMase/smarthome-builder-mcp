@@ -125,8 +125,11 @@ Add `validate` to the `from . import ...` line in `server.py`.
 ## Error handling
 
 `validate_flow` performs only reads (`get_flows`, `get_nodes`); a Node-RED error
-surfaces through the usual `NRError` → `_wrap` mapping. The engine never raises on
-a malformed node — a malformed node becomes a finding.
+surfaces through the usual `NRError` → `_wrap` mapping. The engine tolerates a
+malformed `wires` (a non-list output entry is skipped, avoiding char-by-char
+false positives on agent-authored nodes). It assumes each flow entry is a dict
+(true for Admin-API flows and consistent with `flows.py`/`edit.py`); a non-dict
+entry surfaces as an `_wrap` error rather than crashing the server.
 
 ## Testing
 
