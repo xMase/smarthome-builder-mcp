@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from .config import Settings
 from .client import NRClient, NRError
 from .backup import BackupStore
-from . import flows, edit, modules, ha, runtime
+from . import flows, edit, modules, ha, runtime, validate
 
 settings = Settings()
 client = NRClient(settings)
@@ -136,6 +136,18 @@ async def nr_get_runtime_events(window_ms: int = 2000, max_messages: int = 100) 
     events by source.)"""
     return await _wrap(lambda: runtime.get_runtime_events(
         client, window_ms=window_ms, max_messages=max_messages))
+
+
+@mcp.tool()
+async def nr_validate_flow(nodes: list[dict] | None = None) -> str:
+    """Validate flow structure and report errors/warnings WITHOUT deploying.
+
+    With `nodes`: validates (current flows + those nodes) — run it before
+    nr_create_nodes/nr_safe_deploy to catch problems early (findings caused by the
+    new nodes are marked `focus`). Without `nodes`: audits the current deployed
+    flows. Checks references (wires, z/tab, group members), duplicate ids, and node
+    types; it does NOT check per-type fields."""
+    return await _wrap(lambda: validate.validate_flow(client, nodes=nodes))
 
 
 # ---- mutating (confirm-gated) ----
