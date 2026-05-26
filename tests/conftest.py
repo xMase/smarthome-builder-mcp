@@ -28,6 +28,7 @@ class FakeNRClient:
         self.global_context = {"memory": {}}
         self.nodes = []            # raw /nodes payload
         self.injected = []         # node_ids injected
+        self.ws_token = None      # token returned by get_ws_token()
         self.installed = []        # module names installed
         self.post_calls = []       # list of (flows, rev) posted
 
@@ -47,6 +48,9 @@ class FakeNRClient:
 
     async def get_global_context(self):
         return self.global_context
+
+    async def get_ws_token(self):
+        return self.ws_token
 
     async def inject(self, node_id):
         self.injected.append(node_id)
