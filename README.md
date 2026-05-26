@@ -2,9 +2,16 @@
 
 MCP server for **Node-RED** with **Home Assistant** awareness and **safe, backup-first deploy**.
 
-Lets an AI assistant read, author and deploy Node-RED flows through the Admin API without
-breaking a working install: every change is backed up first, deploys use optimistic locking
-(never reordering tabs), and by default changes are *previewed* and only applied on confirmation.
+It lets an AI assistant (Claude, or any MCP client) **read, author, and deploy Node-RED flows**
+through Node-RED's Admin API — without breaking a working installation:
+
+- **Backup-first** — every change snapshots the current flows to disk *before* writing.
+- **Optimistic locking** — deploys use the correct `GET → POST /flows` pattern, so a concurrent
+  edit is detected (never silently overwritten) and tab order is preserved.
+- **Preview, then confirm** — by default mutating tools return a diff *preview* and write nothing
+  until you call them again with `confirm=true`.
+- **Home-Assistant-aware** — recognizes `node-red-contrib-home-assistant-websocket` nodes and can
+  validate their entity/service references against a live Home Assistant.
 
 Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) (MIT). See `NOTICE`.
 
@@ -16,41 +23,95 @@ warranties of any kind** (see `LICENSE`). It talks to your Node-RED Admin API an
 deploy flows; review the code and keep a backup of your flows before pointing it at anything you
 care about. Use at your own risk.
 
-## Quick start (stdio)
+## Tools
+
+22 MCP tools, grouped:
+
+| Group | Tools |
+|---|---|
+| **Inspect** (read-only) | `nr_get_flow_summary`, `nr_get_flow` (optional `fields` filter), `nr_search_nodes`, `nr_get_function_code`, `nr_get_node_config`, `nr_get_flow_context`, `nr_get_global_context`, `nr_get_debug_output` |
+| **Author & deploy** (confirm-gated, backup-first) | `nr_safe_deploy` (patch one node), `nr_safe_deploy_many` (atomic multi-node), `nr_add_wire` (idempotent), `nr_create_nodes`, `nr_delete_nodes` |
+| **Backups** | `nr_backup_flow`, `nr_list_backups`, `nr_restore_backup` |
+| **Modules & testing** | `nr_get_installed_modules`, `nr_install_module`, `nr_inject` |
+| **Home Assistant** | `ha_list_ha_nodes`, `ha_get_server_config`, `ha_validate_calls` |
+
+## How the safety model works
+
+Every mutating tool runs through one gate:
+
+1. Fetch the current flows + revision.
+2. Compute the proposed flows in memory and **diff** them → a human-readable preview.
+3. If `DEPLOY_MODE=propose` and you did **not** pass `confirm=true` → return the preview and stop
+   (nothing is written).
+4. Otherwise → **snapshot a backup**, then `POST` with optimistic locking. On a revision conflict
+   it re-reads, recomputes against the fresh state, and retries once.
+
+So in the default `propose` mode the loop is: *call a tool → read the preview → call again with
+`confirm=true` to apply*. A backup is always written before any real change.
+
+## Configuration
+
+All settings come from environment variables (or a `.env` file in the working directory).
+Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults shown.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NR_URL` | `http://localhost:1880` | Node-RED base URL |
+| `NR_TOKEN` | — | Bearer token for the Admin API |
+| `NR_USER` / `NR_PASS` | — | Basic-auth (used only if no token) |
+| `NR_VERIFY_SSL` | `1` | `0` to skip TLS verification (self-signed certs) |
+| `DEPLOY_MODE` | `propose` | `propose` (preview, write on `confirm=true`) or `auto` |
+| `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written |
+| `HA_URL` / `HA_TOKEN` | — | Optional; enables `ha_validate_calls` |
+| `MCP_TRANSPORT` | `stdio` | `stdio` or `http` (streamable-HTTP) |
+| `MCP_HTTP_HOST` / `MCP_HTTP_PORT` | `0.0.0.0` / `8080` | Bind address/port in `http` mode |
+
+Auth precedence: `NR_TOKEN` → `NR_USER`/`NR_PASS` → none.
+
+## Install & run
+
+### A. Local, stdio (Claude Code on the same machine)
+
+Until it's published to PyPI, install from source into a virtualenv:
 
 ```bash
-uv tool install node-red-homeassistant-mcp
-NR_URL=http://YOUR_NODE_RED:1880 NR_USER=admin NR_PASS=... node-red-homeassistant-mcp
+git clone <this-repo> node-red-homeassistant-mcp && cd node-red-homeassistant-mcp
+uv venv --python 3.12 .venv && uv pip install -e .
+# (or without uv:  python3 -m venv .venv && .venv/bin/pip install -e .)
 ```
 
-Configure your MCP client to launch the command with the env vars above.
+Register it with Claude Code. The launch working directory differs from the project, so pass the
+config as `-e KEY=VALUE` (not via `.env`):
 
-## Deploy on Docker / Portainer (HTTP)
+```bash
+claude mcp add nrha -s user \
+  -e NR_URL=http://localhost:1880 \
+  -e DEPLOY_MODE=propose \
+  -- /ABSOLUTE/PATH/TO/.venv/bin/node-red-homeassistant-mcp
+```
+
+Then open a **new** Claude Code session (MCP servers load at startup) and ask it to use the tools,
+e.g. *"use nrha to summarise my Node-RED flows."*
+
+### B. Docker / Portainer (HTTP service)
 
 Run it as a long-lived HTTP service (streamable-HTTP at `/mcp`).
 
-**1. Build the image on your Docker host:**
+1. **Build the image** on your Docker host:
+   ```bash
+   docker build -t node-red-homeassistant-mcp:local .
+   ```
+2. **Deploy the stack** in Portainer: *Stacks → Add stack → Web editor*, paste
+   `deploy/portainer-stack.yml`, **Deploy the stack**. (Edit `NR_URL` to point at your own
+   Node-RED, or keep the bundled throwaway one.)
+3. **Connect your MCP client** to the HTTP endpoint:
+   ```bash
+   claude mcp add --transport http nrha http://<DOCKER_HOST_IP>:8080/mcp
+   ```
 
-```bash
-docker build -t node-red-homeassistant-mcp:local .
-```
-
-**2. Deploy the stack in Portainer:** *Stacks → Add stack → Web editor*, paste
-`deploy/portainer-stack.yml`, and **Deploy the stack**. (Edit `NR_URL` to point at your own
-Node-RED, or keep the bundled throwaway one.)
-
-**3. Connect your MCP client** to the HTTP endpoint. For Claude Code:
-
-```bash
-claude mcp add --transport http home-node-red http://<DOCKER_HOST_IP>:8080/mcp
-```
-
-Notes:
-- The container talks to Node-RED at `NR_URL`. On the same Docker network use the service name
-  (`http://nodered:1880`); for an external/Home Assistant Node-RED use its LAN URL + auth
-  (`NR_TOKEN` or `NR_USER`/`NR_PASS`).
-- `DEPLOY_MODE=propose` (default) previews changes; call a mutating tool again with
-  `confirm=true` to apply. Backups are written under the `/data` volume.
+The container reaches Node-RED at `NR_URL` — use the Docker service name on a shared network
+(`http://nodered:1880`) or your Home Assistant Node-RED's LAN URL + auth. Backups are written to
+the `/data` volume.
 
 ## Manual verification (end-to-end smoke test)
 
@@ -74,3 +135,15 @@ The script:
 - Seeds a tab + inject node via the Admin API if Node-RED is empty.
 - Calls `nr_safe_deploy` in propose mode (`confirm=false`) and asserts `deployed:false` plus a diff preview.
 - Calls `nr_safe_deploy` with `confirm=true` and asserts `deployed:true` plus a backup file on disk.
+
+## Development
+
+```bash
+uv pip install -e ".[dev]"
+.venv/bin/pytest -q          # unit tests (mocked Admin API, no network)
+```
+
+## Credits & license
+
+MIT. Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) by NXTAssist.ai (incl. its open
+PR #3); see `NOTICE` for attribution.
