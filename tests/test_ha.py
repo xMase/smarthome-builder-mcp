@@ -53,14 +53,21 @@ FAKE_SERVICES = [
     }},
 ]
 
+FAKE_HISTORY = [
+    {"entity_id": "sensor.x", "state": "0", "last_changed": "2026-05-26T08:00:00+00:00"},
+    {"entity_id": "sensor.x", "state": "1.2", "last_changed": "2026-05-26T09:00:00+00:00"},
+    {"entity_id": "sensor.x", "state": "0", "last_changed": "2026-05-26T10:00:00+00:00"},
+]
+
 
 class FakeHAClient:
     """Minimal fake HA REST client for unit tests."""
 
-    def __init__(self, states=None, state_map=None, services=None):
+    def __init__(self, states=None, state_map=None, services=None, history=None):
         self._states = states or FAKE_STATES
         self._state_map = state_map or {s["entity_id"]: s for s in self._states}
         self._services = services if services is not None else FAKE_SERVICES
+        self._history = history if history is not None else FAKE_HISTORY
 
     async def get_states(self):
         return list(self._states)
@@ -72,6 +79,9 @@ class FakeHAClient:
 
     async def get_services(self):
         return list(self._services)
+
+    async def get_history(self, entity_id, start_iso, end_iso=None):
+        return [list(self._history)]
 
 
 @pytest.mark.asyncio
@@ -169,3 +179,43 @@ async def test_get_services_index_skips_entry_without_domain():
     res = await ha.get_services(fake)
     assert res["domains"] == {"light": ["turn_on"]}
     assert res["total_domains"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_entity_history_basic():
+    fake = FakeHAClient()
+    res = await ha.get_entity_history(fake, "sensor.x", hours=24)
+    assert res["total_changes"] == 3
+    assert res["first"]["state"] == "0"
+    assert res["last"]["state"] == "0"
+    assert len(res["points"]) == 3
+    assert "note" not in res
+
+
+@pytest.mark.asyncio
+async def test_get_entity_history_truncates_to_recent():
+    many = [{"state": str(i), "last_changed": f"2026-05-26T00:{i:02d}:00+00:00"} for i in range(60)]
+    fake = FakeHAClient(history=many)
+    res = await ha.get_entity_history(fake, "sensor.x", hours=24, max_points=10)
+    assert res["total_changes"] == 60
+    assert res["truncated"] is True
+    assert len(res["points"]) == 10
+    assert res["points"][-1]["state"] == "59"   # most recent kept
+    assert res["points"][0]["state"] == "50"
+
+
+@pytest.mark.asyncio
+async def test_get_entity_history_empty_has_note():
+    fake = FakeHAClient(history=[])
+    res = await ha.get_entity_history(fake, "sensor.x", hours=24)
+    assert res["total_changes"] == 0
+    assert res["points"] == []
+    assert res["first"] is None
+    assert "note" in res
+
+
+@pytest.mark.asyncio
+async def test_get_entity_history_large_window_has_note():
+    fake = FakeHAClient()
+    res = await ha.get_entity_history(fake, "sensor.x", hours=9000)
+    assert "note" in res
