@@ -30,11 +30,14 @@ async def run(client, settings, *, ha_ping=None) -> dict:
         }
     }
 
-    flows, _ = await client.get_flows()
-    out["flows"] = {
-        "tabs": sum(1 for f in flows if f.get("type") == "tab"),
-        "total_objects": len(flows),
-    }
+    try:
+        flows, _ = await client.get_flows()
+        out["flows"] = {
+            "tabs": sum(1 for f in flows if f.get("type") == "tab"),
+            "total_objects": len(flows),
+        }
+    except NRError:
+        out["flows"] = None
 
     try:
         nodes = await client.get_nodes()

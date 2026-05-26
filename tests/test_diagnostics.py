@@ -31,6 +31,17 @@ async def test_diagnostics_nr_unreachable(fake_client):
 
 
 @pytest.mark.asyncio
+async def test_diagnostics_flows_failure_is_guarded(fake_client):
+    async def _raise(*a, **k):
+        raise NRError("flows down")
+    fake_client.get_flows = _raise
+    settings = Settings(ha_url="", ha_token="")
+    res = await diagnostics.run(fake_client, settings)
+    assert res["node_red"]["reachable"] is True       # settings still succeeded
+    assert res["flows"] is None                        # guarded, snapshot survives
+
+
+@pytest.mark.asyncio
 async def test_diagnostics_ha_reachable(fake_client):
     settings = Settings(ha_url="http://ha:8123", ha_token="tok")
 
