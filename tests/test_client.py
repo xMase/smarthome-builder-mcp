@@ -50,24 +50,60 @@ async def test_auth_error_maps():
     await c.close()
 
 
-def test_user_pass_defers_login():
-    """username/password no longer sets BasicAuth; Authorization header absent at construction."""
-    c = make_client(nr_user="u", nr_pass="p")
+def test_token_mode_defers_login():
+    """In token mode, no static auth at construction — Authorization header absent."""
+    c = make_client(nr_user="u", nr_pass="p", nr_auth="token")
     assert c._client.auth is None
     assert "authorization" not in c._client.headers
+
+
+def test_basic_auth_default():
+    """In basic mode (default), httpx.BasicAuth is set on the client at construction."""
+    c = make_client(nr_user="u", nr_pass="p")
+    assert c._client.auth is not None
+    assert isinstance(c._client.auth, httpx.BasicAuth)
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_basic_auth_sends_basic_header():
+    """In basic mode, GET /flows carries an Authorization: Basic ... header."""
+    respx.get("http://nr.test/flows").mock(
+        return_value=httpx.Response(200, json={"rev": "r1", "flows": []})
+    )
+    c = make_client(nr_user="u", nr_pass="p")  # default nr_auth="basic"
+    await c.get_flows()
+    req = respx.routes[0].calls.last.request
+    assert req.headers["Authorization"].startswith("Basic ")
+    await c.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_basic_mode_does_not_call_auth_token():
+    """In basic mode, /auth/token is never hit — only GET /flows."""
+    respx.get("http://nr.test/flows").mock(
+        return_value=httpx.Response(200, json={"rev": "r", "flows": []})
+    )
+    c = make_client(nr_user="u", nr_pass="p")  # default nr_auth="basic"
+    await c.get_flows()
+    # /auth/token route is never registered; respx strict mode would raise if it were called.
+    # Confirm by checking only one route was used and it is the flows route.
+    assert len(respx.routes) == 1
+    await c.close()
 
 
 @respx.mock
 @pytest.mark.asyncio
 async def test_password_login_then_authorizes_requests():
-    """On first API call the client POSTs /auth/token, then uses the returned bearer."""
+    """In token mode, on first API call the client POSTs /auth/token, then uses the returned bearer."""
     respx.post("http://nr.test/auth/token").mock(
         return_value=httpx.Response(200, json={"access_token": "tok", "token_type": "Bearer"})
     )
     respx.get("http://nr.test/flows").mock(
         return_value=httpx.Response(200, json={"rev": "r", "flows": []})
     )
-    c = make_client(nr_user="u", nr_pass="p")
+    c = make_client(nr_user="u", nr_pass="p", nr_auth="token")
     await c.get_flows()
     flows_request = respx.routes[1].calls.last.request
     assert flows_request.headers["Authorization"] == "Bearer tok"
@@ -77,9 +113,9 @@ async def test_password_login_then_authorizes_requests():
 @respx.mock
 @pytest.mark.asyncio
 async def test_login_failure_raises():
-    """Non-200 from /auth/token raises NRAuthError."""
+    """In token mode, non-200 from /auth/token raises NRAuthError."""
     respx.post("http://nr.test/auth/token").mock(return_value=httpx.Response(401))
-    c = make_client(nr_user="u", nr_pass="p")
+    c = make_client(nr_user="u", nr_pass="p", nr_auth="token")
     with pytest.raises(NRAuthError):
         await c.get_flows()
     await c.close()
