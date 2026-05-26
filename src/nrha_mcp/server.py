@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from .config import Settings
 from .client import NRClient, NRError
 from .backup import BackupStore
-from . import flows, edit, modules, ha, runtime, validate, deploy
+from . import flows, edit, modules, ha, runtime, validate, deploy, diagnostics
 
 settings = Settings()
 client = NRClient(settings)
@@ -307,6 +307,14 @@ async def ha_get_entity_history(entity_id: str, hours: int = 24, max_points: int
         return await _wrap(lambda: ha.get_entity_history(ha_client, entity_id, hours=hours, max_points=max_points))
     finally:
         await ha_client.close()
+
+
+@mcp.tool()
+async def nr_diagnostics() -> str:
+    """Read-only health snapshot: Node-RED reachability/version/runtime-state,
+    context store names, flow counts, installed node sets, MCP config, and Home
+    Assistant configured/reachable. Run it first when something seems off."""
+    return await _wrap(lambda: diagnostics.run(client, settings))
 
 
 def main():
