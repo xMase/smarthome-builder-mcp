@@ -112,7 +112,8 @@ async def nr_capture_debug(
     Subscribes first, then (optionally) triggers `inject_node_id`, then collects
     messages for `window_ms`. Use this to verify a flow's output deterministically:
     debug-node output is NOT in flow context, so the context tools cannot see it.
-    Without `inject_node_id` it passively listens for the window."""
+    Without `inject_node_id` it passively listens for the window. `topics` selects
+    channels: "debug", "status", "notification" (default ["debug", "status"])."""
     return await _wrap(lambda: runtime.capture_debug(
         client,
         window_ms=window_ms,
@@ -122,6 +123,19 @@ async def nr_capture_debug(
         flow_id=flow_id,
         max_messages=max_messages,
     ))
+
+
+@mcp.tool()
+async def nr_get_runtime_events(window_ms: int = 2000, max_messages: int = 100) -> str:
+    """Capture Node-RED runtime/system events from the /comms `notification/#` channel.
+
+    Surfaces deploy outcomes, runtime-state changes (flows started/stopped, safe
+    mode) and node/module problems (failed loads, unregistered types). Use it right
+    after a deploy to check nothing broke. It listens passively for `window_ms`, so
+    trigger the action during the window. (Does not filter by severity yet; returns
+    events by source.)"""
+    return await _wrap(lambda: runtime.get_runtime_events(
+        client, window_ms=window_ms, max_messages=max_messages))
 
 
 # ---- mutating (confirm-gated) ----
