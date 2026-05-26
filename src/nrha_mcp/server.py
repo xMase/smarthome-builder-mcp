@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from .config import Settings
 from .client import NRClient, NRError
 from .backup import BackupStore
-from . import flows, edit, modules, ha, runtime, validate, deploy, diagnostics
+from . import flows, edit, modules, ha, runtime, validate, deploy, diagnostics, ha_stats
 
 settings = Settings()
 client = NRClient(settings)
@@ -315,6 +315,21 @@ async def nr_diagnostics() -> str:
     context store names, flow counts, installed node sets, MCP config, and Home
     Assistant configured/reachable. Run it first when something seems off."""
     return await _wrap(lambda: diagnostics.run(client, settings))
+
+
+@mcp.tool()
+async def ha_get_entity_statistics(entity_id: str, days: int = 30,
+                                   period: str = "day", max_buckets: int = 200) -> str:
+    """Long-term statistics (downsampled mean/min/max) for a Home Assistant entity.
+    Requires HA_URL + HA_TOKEN.
+
+    Returns up to `max_buckets` aggregate buckets over the last `days`, bucketed by
+    `period` ("hour"|"day"|"week"|"month"). This is the tool for WIDE spans
+    (weeks/months/year) where raw history (ha_get_entity_history) is retention-limited."""
+    if not settings.ha_url or not settings.ha_token:
+        return _err("HA get_entity_statistics needs HA_URL and HA_TOKEN to be set.")
+    return await _wrap(lambda: ha_stats.get_entity_statistics(
+        settings, entity_id, days=days, period=period, max_buckets=max_buckets))
 
 
 def main():

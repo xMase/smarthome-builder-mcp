@@ -54,6 +54,7 @@ EXPECTED_TOOLS = {
     "ha_get_state",
     "ha_get_services",
     "ha_get_entity_history",
+    "ha_get_entity_statistics",
 }
 
 
