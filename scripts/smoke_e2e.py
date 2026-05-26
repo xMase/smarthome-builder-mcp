@@ -43,6 +43,7 @@ EXPECTED_TOOLS = {
     "nr_backup_flow",
     "nr_list_backups",
     "nr_restore_backup",
+    "nr_diff",
     "nr_get_installed_modules",
     "nr_install_module",
     "nr_inject",
