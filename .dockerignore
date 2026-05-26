@@ -9,3 +9,4 @@ backups/
 dist/
 build/
 docker-compose.dev.yml
+.env
