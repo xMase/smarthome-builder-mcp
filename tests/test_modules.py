@@ -48,6 +48,6 @@ async def test_inject_disabled_node_raises():
         {"id": "tabOn", "type": "tab", "label": "Active"},
         {"id": "inj", "type": "inject", "z": "tabOn", "name": "x", "d": True, "wires": [[]]},
     ])
-    with pytest.raises(NRError, match="disabled"):
+    with pytest.raises(NRError, match="is disabled"):
         await modules.inject_node(client, "inj")
     assert client.injected == []

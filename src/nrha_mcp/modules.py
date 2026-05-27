@@ -43,7 +43,7 @@ async def inject_node(client: NRClient, node_id: str) -> dict:
     tab = next((f for f in flows if f.get("id") == z and f.get("type") == "tab"), None)
     if tab and tab.get("disabled"):
         raise NRError(
-            f"Inject node '{node_id}' is on disabled flow '{tab.get('label', '')}' — "
+            f"Inject node '{node_id}' is on disabled flow '{tab.get('label') or tab['id']}' — "
             f"enable the flow before injecting.")
     await client.inject(node_id)
     return {"success": True, "node_id": node_id, "node_name": node.get("name", ""), "message": "Inject triggered"}
