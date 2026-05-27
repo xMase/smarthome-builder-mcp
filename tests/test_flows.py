@@ -180,3 +180,25 @@ async def test_get_subflow_by_instance_id(sf_client):
 async def test_get_subflow_unknown_raises(sf_client):
     with pytest.raises(NRNotFoundError):
         await flows.get_subflow(sf_client, "does-not-exist")
+
+
+@pytest.mark.asyncio
+async def test_node_config_on_subflow_definition(sf_client):
+    res = await flows.get_node_config(sf_client, "sfdef")
+    assert set(res["_downstream"]) == {"nest", "chg"}
+    assert res["_ports"]["inputs"] == 1
+    assert res["_ports"]["has_status"] is True
+    assert {o["label"] for o in res["_ports"]["outputs"]} == {"inverno", "estate"}
+
+
+@pytest.mark.asyncio
+async def test_node_config_on_internal_node_feeding_port(sf_client):
+    res = await flows.get_node_config(sf_client, "nest")
+    assert res["_feeds_outputs"] == [0, 1]
+    assert res["_subflow_def"] == {"id": "nestdef", "name": "strSeasonSwitch"}  # also an instance
+
+
+@pytest.mark.asyncio
+async def test_node_config_on_subflow_instance(sf_client):
+    res = await flows.get_node_config(sf_client, "inst1")
+    assert res["_subflow_def"] == {"id": "sfdef", "name": "seasonSwitch"}
