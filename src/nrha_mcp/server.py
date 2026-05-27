@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from .config import Settings
 from .client import NRClient, NRError
 from .backup import BackupStore
-from . import flows, edit, modules, ha, runtime, validate, deploy, diagnostics, ha_stats, subflow_edit
+from . import flows, edit, modules, ha, runtime, validate, deploy, diagnostics, ha_ws, subflow_edit
 
 settings = Settings()
 client = NRClient(settings)
@@ -377,7 +377,7 @@ async def ha_get_entity_statistics(entity_id: str, days: int = 30,
     (weeks/months/year) where raw history (ha_get_entity_history) is retention-limited."""
     if not settings.ha_url or not settings.ha_token:
         return _err("HA get_entity_statistics needs HA_URL and HA_TOKEN to be set.")
-    return await _wrap(lambda: ha_stats.get_entity_statistics(
+    return await _wrap(lambda: ha_ws.get_entity_statistics(
         settings, entity_id, days=days, period=period, max_buckets=max_buckets))
 
 

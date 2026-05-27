@@ -2,8 +2,8 @@ import collections
 
 import pytest
 
-from nrha_mcp import ha_stats
-from nrha_mcp.ha_stats import HAStatsError
+from nrha_mcp import ha_ws
+from nrha_mcp.ha_ws import HAWsError
 from nrha_mcp.config import Settings
 
 
@@ -44,8 +44,8 @@ def _settings():
 
 
 def test_ws_url():
-    assert ha_stats._ws_url("http://ha:8123") == "ws://ha:8123/api/websocket"
-    assert ha_stats._ws_url("https://ha:8123/") == "wss://ha:8123/api/websocket"
+    assert ha_ws._ws_url("http://ha:8123") == "ws://ha:8123/api/websocket"
+    assert ha_ws._ws_url("https://ha:8123/") == "wss://ha:8123/api/websocket"
 
 
 @pytest.mark.asyncio
@@ -54,7 +54,7 @@ async def test_statistics_normalizes_buckets():
               _result_frame("sensor.x", [_bucket(1746050400000, 0.13, 0.0, 13.3),
                                          _bucket(1748728800000, 0.02, 0.0, 2.7)])]
     conn = FakeHAWsConn(frames)
-    res = await ha_stats.get_entity_statistics(
+    res = await ha_ws.get_entity_statistics(
         _settings(), "sensor.x", days=365, period="month", connect=_connect_factory(conn))
     assert res["total_buckets"] == 2
     assert res["period"] == "month"
@@ -74,7 +74,7 @@ async def test_statistics_truncates_to_recent():
     many = [_bucket(1700000000000 + i * 1000, i, i, i) for i in range(60)]
     frames = [{"type": "auth_required"}, {"type": "auth_ok"}, _result_frame("sensor.x", many)]
     conn = FakeHAWsConn(frames)
-    res = await ha_stats.get_entity_statistics(
+    res = await ha_ws.get_entity_statistics(
         _settings(), "sensor.x", max_buckets=10, connect=_connect_factory(conn))
     assert res["total_buckets"] == 60
     assert res["truncated"] is True
@@ -88,7 +88,7 @@ async def test_statistics_truncates_to_recent():
 async def test_statistics_empty_has_note():
     frames = [{"type": "auth_required"}, {"type": "auth_ok"}, _result_frame("sensor.x", [])]
     conn = FakeHAWsConn(frames)
-    res = await ha_stats.get_entity_statistics(
+    res = await ha_ws.get_entity_statistics(
         _settings(), "sensor.x", connect=_connect_factory(conn))
     assert res["total_buckets"] == 0
     assert res["buckets"] == []
@@ -99,8 +99,8 @@ async def test_statistics_empty_has_note():
 async def test_statistics_auth_invalid_raises():
     frames = [{"type": "auth_required"}, {"type": "auth_invalid"}]
     conn = FakeHAWsConn(frames)
-    with pytest.raises(HAStatsError):
-        await ha_stats.get_entity_statistics(
+    with pytest.raises(HAWsError):
+        await ha_ws.get_entity_statistics(
             _settings(), "sensor.x", connect=_connect_factory(conn))
     assert conn.closed is True
 
@@ -112,7 +112,7 @@ async def test_statistics_skips_non_result_frames():
               {"id": 7, "type": "event", "event": {}},
               _result_frame("sensor.x", [_bucket(1700000000000, 1.0, 0.0, 2.0)])]
     conn = FakeHAWsConn(frames)
-    res = await ha_stats.get_entity_statistics(
+    res = await ha_ws.get_entity_statistics(
         _settings(), "sensor.x", connect=_connect_factory(conn))
     assert res["total_buckets"] == 1
     assert res["buckets"][0]["mean"] == 1.0
