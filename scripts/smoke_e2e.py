@@ -60,6 +60,7 @@ EXPECTED_TOOLS = {
     "nr_add_subflow_port",
     "nr_remove_subflow_port",
     "nr_delete_subflow",
+    "nr_create_subflow",
 }
 
 
