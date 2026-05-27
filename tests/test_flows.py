@@ -76,3 +76,76 @@ async def test_context_key_not_found_raises(fake_client):
     fake_client.global_context = {"default": {}, "store": {}}
     with pytest.raises(NRNotFoundError):
         await flows.get_global_context(fake_client, "missing")
+
+
+# --- subflow fixtures/tests -------------------------------------------------
+
+SUBFLOW_FLOWS = [
+    {"id": "tabA", "type": "tab", "label": "Main"},
+    {
+        "id": "sfdef", "type": "subflow", "name": "seasonSwitch", "color": "#DDAA99",
+        "in": [{"wires": [{"id": "getS"}]}],
+        "out": [
+            {"wires": [{"id": "nest", "port": 0}]},
+            {"wires": [{"id": "nest", "port": 1}]},
+        ],
+        "status": {"wires": [{"id": "chg", "port": 0}]},
+        "outputLabels": ["inverno", "estate"],
+        "env": [],
+    },
+    {"id": "getS", "type": "api-current-state", "z": "sfdef", "name": "getSeason",
+     "entity_id": "select.season", "wires": [["nest", "chg"]]},
+    {"id": "nest", "type": "subflow:nestdef", "z": "sfdef", "name": "", "wires": [[], []]},
+    {"id": "chg", "type": "change", "z": "sfdef", "name": "", "wires": [[]]},
+    {"id": "nestdef", "type": "subflow", "name": "strSeasonSwitch",
+     "in": [{"wires": [{"id": "sw"}]}],
+     "out": [{"wires": [{"id": "sw", "port": 0}]}, {"wires": [{"id": "sw", "port": 1}]}],
+     "outputLabels": ["inverno", "estate"]},
+    {"id": "sw", "type": "switch", "z": "nestdef", "name": "", "wires": [[], []]},
+    {"id": "inst1", "type": "subflow:sfdef", "z": "tabA", "name": "seasonSwitch",
+     "wires": [[], ["dn1"]]},
+    {"id": "dn1", "type": "debug", "z": "tabA", "name": "", "wires": [[]]},
+]
+
+
+@pytest.fixture
+def sf_client():
+    from tests.conftest import FakeNRClient
+    return FakeNRClient(flows=SUBFLOW_FLOWS)
+
+
+@pytest.mark.asyncio
+async def test_get_subflow_outputs_resolved_with_labels(sf_client):
+    res = await flows.get_subflow(sf_client, "sfdef")
+    assert res["subflow"]["name"] == "seasonSwitch"
+    assert [o["label"] for o in res["outputs"]] == ["inverno", "estate"]
+    assert res["outputs"][1]["sources"] == [{"node_id": "nest", "port": 1}]
+    assert res["status"]["sources"] == [{"node_id": "chg", "port": 0}]
+    assert res["inputs"][0]["wires"] == [{"node_id": "getS"}]
+
+
+@pytest.mark.asyncio
+async def test_get_subflow_internal_node_annotations(sf_client):
+    res = await flows.get_subflow(sf_client, "sfdef")
+    by_id = {n["id"]: n for n in res["nodes"]}
+    assert by_id["getS"]["_targets"] == ["nest", "chg"]
+    assert by_id["nest"]["_feeds_outputs"] == [0, 1]
+    assert by_id["chg"]["_feeds_status"] is True
+    assert by_id["nest"]["_nested_subflow"] == {"def_id": "nestdef", "def_name": "strSeasonSwitch"}
+    assert res["total_nodes"] == 3
+
+
+@pytest.mark.asyncio
+async def test_get_subflow_nested_pointer_not_expanded(sf_client):
+    res = await flows.get_subflow(sf_client, "sfdef")
+    assert res["nested_subflows"] == [
+        {"instance_node_id": "nest", "def_id": "nestdef", "def_name": "strSeasonSwitch"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_subflow_lists_instances_with_wired_outputs(sf_client):
+    res = await flows.get_subflow(sf_client, "sfdef")
+    assert res["instances"] == [
+        {"node_id": "inst1", "flow_id": "tabA", "flow_label": "Main", "wired_outputs": [1]}
+    ]
