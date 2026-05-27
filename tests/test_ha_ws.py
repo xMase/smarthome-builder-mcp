@@ -116,3 +116,57 @@ async def test_statistics_skips_non_result_frames():
         _settings(), "sensor.x", connect=_connect_factory(conn))
     assert res["total_buckets"] == 1
     assert res["buckets"][0]["mean"] == 1.0
+
+
+def _entry(domain, entry_id, title, state):
+    return {"domain": domain, "entry_id": entry_id, "title": title, "state": state}
+
+
+def _entries_result(entries):
+    return {"id": 1, "type": "result", "success": True, "result": entries}
+
+
+@pytest.mark.asyncio
+async def test_nodered_present_and_loaded():
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              _entries_result([_entry("sun", "s1", "Sun", "loaded"),
+                               _entry("nodered", "n1", "Node-RED", "loaded")])]
+    conn = FakeHAWsConn(frames)
+    res = await ha_ws.check_nodered_integration(_settings(), connect=_connect_factory(conn))
+    assert res["installed"] is True
+    assert res["entries"] == [{"entry_id": "n1", "title": "Node-RED", "state": "loaded"}]
+    assert "loaded" in res["note"].lower()
+    assert {"id": 1, "type": "config_entries/get"} in conn.sent
+    assert conn.closed is True
+
+
+@pytest.mark.asyncio
+async def test_nodered_present_not_loaded():
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              _entries_result([_entry("nodered", "n1", "Node-RED", "setup_error")])]
+    conn = FakeHAWsConn(frames)
+    res = await ha_ws.check_nodered_integration(_settings(), connect=_connect_factory(conn))
+    assert res["installed"] is True
+    assert res["entries"][0]["state"] == "setup_error"
+    assert "not loaded" in res["note"].lower()
+
+
+@pytest.mark.asyncio
+async def test_nodered_absent():
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              _entries_result([_entry("sun", "s1", "Sun", "loaded")])]
+    conn = FakeHAWsConn(frames)
+    res = await ha_ws.check_nodered_integration(_settings(), connect=_connect_factory(conn))
+    assert res["installed"] is False
+    assert res["entries"] == []
+    assert "not set up" in res["note"].lower()
+
+
+@pytest.mark.asyncio
+async def test_nodered_unauthorized_raises():
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              {"id": 1, "type": "result", "success": False, "error": {"code": "unauthorized"}}]
+    conn = FakeHAWsConn(frames)
+    with pytest.raises(HAWsError, match="admin"):
+        await ha_ws.check_nodered_integration(_settings(), connect=_connect_factory(conn))
+    assert conn.closed is True
