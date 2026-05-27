@@ -92,3 +92,29 @@ async def remove_subflow_port(client, store, settings, *, subflow, index, confir
     return await commit(client, store, settings, rebuild=rebuild,
                         summary=f"remove output port {index} from subflow {def_id}",
                         confirm=confirm)
+
+
+async def delete_subflow(client, store, settings, *, subflow, cascade=False, confirm=False):
+    flows, _ = await client.get_flows()
+    def_id = _find_subflow_def_id(flows, subflow)
+
+    def rebuild(fl):
+        inst_type = f"subflow:{def_id}"
+        instances = [f["id"] for f in fl if f.get("type") == inst_type]
+        if instances and not cascade:
+            raise NRError(f"Subflow '{def_id}' has {len(instances)} instance(s): "
+                          f"{instances}. Pass cascade=true to delete them too, or "
+                          f"remove them first.")
+        remove = {def_id} | {f["id"] for f in fl if f.get("z") == def_id}
+        if cascade:
+            remove |= set(instances)
+        new = [copy.deepcopy(f) for f in fl if f["id"] not in remove]
+        for f in new:
+            if f.get("type") == "group" and "nodes" in f:
+                f["nodes"] = [n for n in f["nodes"] if n not in remove]
+            if "wires" in f:
+                f["wires"] = [[w for w in out if w not in remove] for out in f["wires"]]
+        return new
+
+    summary = f"delete subflow {def_id}" + (" (cascade)" if cascade else "")
+    return await commit(client, store, settings, rebuild=rebuild, summary=summary, confirm=confirm)
