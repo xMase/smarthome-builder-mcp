@@ -13,8 +13,9 @@ def test_tools_registered():
         "nr_inject", "nr_diagnostics", "ha_list_ha_nodes", "ha_get_server_config",
         "nr_backup_flow", "nr_list_backups", "nr_restore_backup", "nr_diff",
         "ha_search_entities", "ha_get_state", "ha_get_services", "ha_get_entity_history", "ha_get_entity_statistics",
+        "ha_check_nodered_integration",
         "nr_instantiate_subflow", "nr_add_subflow_port", "nr_remove_subflow_port", "nr_delete_subflow",
         "nr_create_subflow",
     }
     assert expected.issubset(names)
-    assert len(names) == 36
+    assert len(names) == 37

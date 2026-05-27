@@ -381,6 +381,18 @@ async def ha_get_entity_statistics(entity_id: str, days: int = 30,
         settings, entity_id, days=days, period=period, max_buckets=max_buckets))
 
 
+@mcp.tool()
+async def ha_check_nodered_integration() -> str:
+    """Check whether the 'Node-RED Companion' integration is set up in Home Assistant.
+    ha-switch/ha-button/ha-sensor nodes can only publish entities to HA when this
+    integration is installed (Settings -> Devices & Services) - a manual HA step no tool
+    can perform. Read-only; requires an admin HA token. Returns
+    {installed, entries:[{entry_id,title,state}], note}."""
+    if not settings.ha_url or not settings.ha_token:
+        return _err("HA integration check needs HA_URL and HA_TOKEN to be set.")
+    return await _wrap(lambda: ha_ws.check_nodered_integration(settings))
+
+
 def main():
     """Console-script entry point."""
     transport = "streamable-http" if settings.mcp_transport == "http" else "stdio"
