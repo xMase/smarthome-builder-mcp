@@ -131,6 +131,77 @@ async def get_node_config(client: NRClient, node_id: str) -> dict:
     return result
 
 
+def _subflow_name(flows: list[dict], def_id: str) -> str:
+    d = next((f for f in flows if f.get("id") == def_id and f.get("type") == "subflow"), None)
+    return d.get("name", "") if d else ""
+
+
+def _port_sources(port: dict) -> list[dict]:
+    return [{"node_id": w["id"], "port": w.get("port", 0)} for w in port.get("wires", [])]
+
+
+def _resolve_subflow(flows: list[dict], def_id: str) -> dict:
+    sf = next((f for f in flows if f.get("id") == def_id and f.get("type") == "subflow"), None)
+    if sf is None:
+        raise NRNotFoundError(f"Subflow not found: '{def_id}'")
+    labels = sf.get("outputLabels", [])
+    outputs = []
+    for i, port in enumerate(sf.get("out", [])):
+        label = labels[i] if i < len(labels) and labels[i] else f"out {i}"
+        outputs.append({"index": i, "label": label, "sources": _port_sources(port)})
+    inputs = [{"index": i, "wires": [{"node_id": w["id"]} for w in port.get("wires", [])]}
+              for i, port in enumerate(sf.get("in", []))]
+    status = {"sources": _port_sources(sf["status"])} if sf.get("status") else None
+
+    feeds_out: dict[str, list[int]] = {}
+    for o in outputs:
+        for s in o["sources"]:
+            feeds_out.setdefault(s["node_id"], []).append(o["index"])
+    status_ids = {s["node_id"] for s in (status["sources"] if status else [])}
+
+    tabs = {f["id"]: f.get("label", "") for f in flows if f.get("type") == "tab"}
+    nodes, nested = [], []
+    for n in flows:
+        if n.get("z") != def_id:
+            continue
+        targets = []
+        for wl in n.get("wires", []):
+            targets.extend(wl)
+        node = dict(n)
+        node["_targets"] = targets
+        node["_feeds_outputs"] = feeds_out.get(n["id"], [])
+        node["_feeds_status"] = n["id"] in status_ids
+        ntype = n.get("type", "")
+        if ntype.startswith("subflow:"):
+            nd = ntype.split(":", 1)[1]
+            ptr = {"def_id": nd, "def_name": _subflow_name(flows, nd)}
+            node["_nested_subflow"] = ptr
+            nested.append({"instance_node_id": n["id"], **ptr})
+        nodes.append(node)
+
+    instances = []
+    inst_type = f"subflow:{def_id}"
+    for f in flows:
+        if f.get("type") == inst_type:
+            wired = [i for i, wl in enumerate(f.get("wires", [])) if wl]
+            instances.append({"node_id": f["id"], "flow_id": f.get("z", ""),
+                              "flow_label": tabs.get(f.get("z", ""), ""), "wired_outputs": wired})
+
+    return {
+        "subflow": {"id": sf["id"], "name": sf.get("name", ""),
+                    "category": sf.get("category", ""), "color": sf.get("color", ""),
+                    "info": sf.get("info", "")},
+        "inputs": inputs, "outputs": outputs, "status": status, "env": sf.get("env", []),
+        "nodes": nodes, "nested_subflows": nested, "instances": instances,
+        "total_nodes": len(nodes),
+    }
+
+
+async def get_subflow(client: NRClient, name_or_id: str) -> dict:
+    flows, _ = await client.get_flows()
+    return _resolve_subflow(flows, name_or_id)
+
+
 def _read_context(data: dict, *, scope: dict, key: str | None, not_found: str) -> dict:
     stores = {name: (c or {}) for name, c in data.items() if isinstance(c, dict)}
     if key is None:
