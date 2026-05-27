@@ -136,3 +136,41 @@ async def test_remove_port_out_of_range_raises(settings_auto, tmp_path):
     with pytest.raises(NRError):
         await subflow_edit.remove_subflow_port(
             client, store, settings_auto, subflow="sf", index=5, confirm=True)
+
+
+@pytest.mark.asyncio
+async def test_delete_refuses_with_instances(settings_auto, tmp_path):
+    client = _client()
+    store = BackupStore(str(tmp_path))
+    with pytest.raises(NRError):
+        await subflow_edit.delete_subflow(
+            client, store, settings_auto, subflow="sf", cascade=False, confirm=True)
+    assert client.post_calls == []           # nothing written
+
+
+@pytest.mark.asyncio
+async def test_delete_cascade_removes_everything(settings_auto, tmp_path):
+    client = _client()
+    store = BackupStore(str(tmp_path))
+    res = await subflow_edit.delete_subflow(
+        client, store, settings_auto, subflow="sf", cascade=True, confirm=True)
+    assert res["deployed"] is True
+    flows, _ = await client.get_flows()
+    ids = {f["id"] for f in flows}
+    assert ids == {"tab1", "d1"}             # def sf, inode, inst1, inst2 all removed
+
+
+@pytest.mark.asyncio
+async def test_delete_no_instances_removes_def_and_internals(settings_auto, tmp_path):
+    flows0 = [
+        {"id": "tab1", "type": "tab", "label": "Main"},
+        {"id": "sf", "type": "subflow", "name": "mySub", "in": [], "out": [], "outputLabels": []},
+        {"id": "inode", "type": "function", "z": "sf", "wires": [[]]},
+    ]
+    client = FakeNRClient(flows=flows0)
+    store = BackupStore(str(tmp_path))
+    res = await subflow_edit.delete_subflow(
+        client, store, settings_auto, subflow="sf", confirm=True)
+    assert res["deployed"] is True
+    flows, _ = await client.get_flows()
+    assert {f["id"] for f in flows} == {"tab1"}
