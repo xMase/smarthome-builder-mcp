@@ -44,8 +44,8 @@ async def _connect_ws(client: NRClient):
 
     url = client.comms_ws_url()
     auth = await client.ws_auth_header()
-    headers = {"Authorization": auth} if auth else {}
-    ws = await websockets.connect(url, additional_headers=headers or None)
+    headers = {"Authorization": auth} if auth else None
+    ws = await websockets.connect(url, additional_headers=headers)
     return _WebsocketsConn(ws)
 
 
