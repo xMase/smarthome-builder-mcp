@@ -162,3 +162,21 @@ async def test_resolve_subflow_skips_wire_without_id():
     ]
     res = await flows.get_subflow(FakeNRClient(flows=flows_with_bad_wire), "sf")
     assert res["outputs"][0]["sources"] == [{"node_id": "ok", "port": 1}]
+
+
+@pytest.mark.asyncio
+async def test_get_subflow_by_name(sf_client):
+    res = await flows.get_subflow(sf_client, "seasonswitch")   # case-insensitive
+    assert res["subflow"]["id"] == "sfdef"
+
+
+@pytest.mark.asyncio
+async def test_get_subflow_by_instance_id(sf_client):
+    res = await flows.get_subflow(sf_client, "inst1")          # instance -> its definition
+    assert res["subflow"]["id"] == "sfdef"
+
+
+@pytest.mark.asyncio
+async def test_get_subflow_unknown_raises(sf_client):
+    with pytest.raises(NRNotFoundError):
+        await flows.get_subflow(sf_client, "does-not-exist")

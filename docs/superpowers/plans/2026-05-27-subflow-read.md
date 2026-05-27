@@ -248,7 +248,9 @@ def _find_subflow_def_id(flows: list[dict], name_or_id: str) -> str:
         if t.startswith("subflow:"):
             return t.split(":", 1)[1]
     q = name_or_id.lower()
-    matches = [f for f in flows if f.get("type") == "subflow" and q in f.get("name", "").lower()]
+    defs = [f for f in flows if f.get("type") == "subflow"]
+    exact = [d for d in defs if d.get("name", "").lower() == q]
+    matches = exact or [d for d in defs if q in d.get("name", "").lower()]   # exact wins over substring
     if len(matches) == 1:
         return matches[0]["id"]
     if len(matches) > 1:
