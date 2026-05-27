@@ -389,7 +389,7 @@ async def ha_check_nodered_integration() -> str:
     can perform. Read-only; requires an admin HA token. Returns
     {installed, entries:[{entry_id,title,state}], note}."""
     if not settings.ha_url or not settings.ha_token:
-        return _err("HA integration check needs HA_URL and HA_TOKEN to be set.")
+        return _err("HA check_nodered_integration needs HA_URL and HA_TOKEN to be set.")
     return await _wrap(lambda: ha_ws.check_nodered_integration(settings))
 
 
