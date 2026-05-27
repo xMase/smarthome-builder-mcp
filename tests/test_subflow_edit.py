@@ -174,3 +174,14 @@ async def test_delete_no_instances_removes_def_and_internals(settings_auto, tmp_
     assert res["deployed"] is True
     flows, _ = await client.get_flows()
     assert {f["id"] for f in flows} == {"tab1"}
+
+
+@pytest.mark.asyncio
+async def test_delete_propose_mode_writes_nothing(settings_propose, tmp_path):
+    client = _client()
+    store = BackupStore(str(tmp_path))
+    res = await subflow_edit.delete_subflow(
+        client, store, settings_propose, subflow="sf", cascade=True, confirm=False)
+    assert res["deployed"] is False
+    assert "preview" in res
+    assert client.post_calls == []
