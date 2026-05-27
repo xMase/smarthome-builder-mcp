@@ -128,6 +128,29 @@ async def get_node_config(client: NRClient, node_id: str) -> dict:
     result["_group_label"] = group_label
     result["_downstream"] = downstream
     result["_upstream"] = upstream
+    if node.get("type") == "subflow":
+        resolved = _resolve_subflow(flows, node_id)
+        ds = set(result["_downstream"])
+        for o in resolved["outputs"]:
+            ds.update(s["node_id"] for s in o["sources"])
+        if resolved["status"]:
+            ds.update(s["node_id"] for s in resolved["status"]["sources"])
+        result["_downstream"] = list(ds)
+        result["_ports"] = {
+            "inputs": len(resolved["inputs"]),
+            "outputs": [{"index": o["index"], "label": o["label"]} for o in resolved["outputs"]],
+            "has_status": resolved["status"] is not None,
+        }
+    else:
+        z = node.get("z", "")
+        if any(f.get("id") == z and f.get("type") == "subflow" for f in flows):
+            me = next((n for n in _resolve_subflow(flows, z)["nodes"] if n["id"] == node_id), {})
+            result["_feeds_outputs"] = me.get("_feeds_outputs", [])
+            result["_feeds_status"] = me.get("_feeds_status", False)
+        ntype = node.get("type", "")
+        if ntype.startswith("subflow:"):
+            nd = ntype.split(":", 1)[1]
+            result["_subflow_def"] = {"id": nd, "name": _subflow_name(flows, nd)}
     return result
 
 
