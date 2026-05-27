@@ -111,3 +111,43 @@ async def get_entity_statistics(settings, entity_id, *, days: int = 30, period: 
         out["note"] = ("No long-term statistics for this entity in the window — it may "
                        "lack a numeric state_class, or have no data in the range.")
     return out
+
+
+async def check_nodered_integration(settings, *, connect=None) -> dict:
+    """Whether the 'Node-RED Companion' integration (config-entry domain 'nodered')
+    is set up in Home Assistant. Read-only; requires an admin HA token."""
+    conn = await (connect or _default_connect)(settings)
+    try:
+        await _auth(conn, settings.ha_token)
+        await conn.send({"id": 1, "type": "config_entries/get"})
+        while True:
+            msg = await conn.recv()
+            if msg.get("id") == 1 and msg.get("type") == "result":
+                if not msg.get("success"):
+                    err = msg.get("error") or {}
+                    if err.get("code") == "unauthorized":
+                        raise HAWsError(
+                            "config_entries/get was refused (unauthorized): the HA token "
+                            "likely lacks admin rights, which this check requires.")
+                    raise HAWsError(f"config_entries/get failed: {err}")
+                entries = msg.get("result") or []
+                break
+    finally:
+        await conn.close()
+
+    nodered = [e for e in entries if e.get("domain") == "nodered"]
+    out_entries = [{"entry_id": e.get("entry_id"), "title": e.get("title"),
+                    "state": e.get("state")} for e in nodered]
+    installed = bool(nodered)
+    loaded = any(e.get("state") == "loaded" for e in nodered)
+    if not installed:
+        note = ("The 'Node-RED Companion' integration is not set up in Home Assistant "
+                "(Settings -> Devices & Services). It is a manual HA step - no tool can "
+                "create it - and it must be present before ha-switch/ha-button/ha-sensor "
+                "nodes can publish entities to HA.")
+    elif not loaded:
+        note = ("Integration present but not loaded (state is not 'loaded'); entities "
+                "from Node-RED won't appear until it loads. Check it in HA.")
+    else:
+        note = "Integration present and loaded; Node-RED can publish entities to HA."
+    return {"installed": installed, "entries": out_entries, "note": note}
