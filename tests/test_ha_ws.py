@@ -170,3 +170,13 @@ async def test_nodered_unauthorized_raises():
     with pytest.raises(HAWsError, match="admin"):
         await ha_ws.check_nodered_integration(_settings(), connect=_connect_factory(conn))
     assert conn.closed is True
+
+
+@pytest.mark.asyncio
+async def test_nodered_generic_failure_raises():
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              {"id": 1, "type": "result", "success": False, "error": {"code": "unknown_error"}}]
+    conn = FakeHAWsConn(frames)
+    with pytest.raises(HAWsError, match="config_entries/get failed"):
+        await ha_ws.check_nodered_integration(_settings(), connect=_connect_factory(conn))
+    assert conn.closed is True
