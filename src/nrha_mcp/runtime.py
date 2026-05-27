@@ -43,10 +43,8 @@ async def _connect_ws(client: NRClient):
     import websockets  # lazy import so unit tests need no network lib
 
     url = client.comms_ws_url()
-    headers = {}
-    auth = client._client.headers.get("Authorization")
-    if auth:
-        headers["Authorization"] = auth  # covers a reverse-proxy auth case
+    auth = await client.ws_auth_header()
+    headers = {"Authorization": auth} if auth else {}
     ws = await websockets.connect(url, additional_headers=headers or None)
     return _WebsocketsConn(ws)
 

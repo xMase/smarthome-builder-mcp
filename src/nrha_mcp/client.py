@@ -3,6 +3,7 @@
 Ported from nr-mcp (MIT) + PR #3. Constructor takes a Settings object.
 """
 
+import base64
 import httpx
 from .config import Settings
 
@@ -87,6 +88,21 @@ class NRClient:
         """Bearer token for the /comms socket, or None if the admin API is open."""
         await self._ensure_auth()
         return self._token
+
+    async def ws_auth_header(self) -> str | None:
+        """Authorization header for the /comms WebSocket handshake.
+
+        Bearer in token mode (after a lazy token exchange), HTTP Basic in basic mode, or
+        None when the admin API is open. httpx applies basic-auth via an auth flow rather
+        than a stored header, so the WS handshake must build the Basic header explicitly.
+        """
+        await self._ensure_auth()
+        if self._token:
+            return f"Bearer {self._token}"
+        if self._user and self._auth_mode == "basic":
+            raw = f"{self._user}:{self._pass or ''}".encode()
+            return "Basic " + base64.b64encode(raw).decode()
+        return None
 
     async def _do(self, method: str, path: str, **kwargs):
         """Send a request, refreshing the token once on a 401 (token mode only)."""
