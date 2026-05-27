@@ -68,7 +68,13 @@ async def search_nodes(client: NRClient, query: str, node_type: str | None = Non
                        flow: str | None = None, max_results: int = 20) -> dict:
     flows, _ = await client.get_flows()
     tabs = {f["id"]: f.get("label", "") for f in flows if f.get("type") == "tab"}
-    nodes = [f for f in flows if "z" in f and f.get("type") not in ("tab", "group")]
+    subflow_names = {f["id"]: f.get("name", "") for f in flows if f.get("type") == "subflow"}
+
+    def _label(z: str) -> str:
+        return tabs.get(z) or subflow_names.get(z, "")
+
+    nodes = [f for f in flows if f.get("type") not in ("tab", "group")
+             and ("z" in f or f.get("type") == "subflow")]
     q = query.lower()
     results = []
     for node in nodes:
@@ -81,7 +87,7 @@ async def search_nodes(client: NRClient, query: str, node_type: str | None = Non
                 continue
         match_in = None
         snippet = ""
-        for field in ("name", "type", "func", "template", "action", "data"):
+        for field in ("name", "type", "func", "template", "action", "data", "info"):
             val = node.get(field, "")
             if isinstance(val, str) and q in val.lower():
                 match_in, snippet = field, val[:200]
@@ -89,7 +95,7 @@ async def search_nodes(client: NRClient, query: str, node_type: str | None = Non
         if match_in:
             results.append({
                 "id": node["id"], "name": node.get("name", ""), "type": node.get("type", ""),
-                "flow_id": node.get("z", ""), "flow_label": tabs.get(node.get("z", ""), ""),
+                "flow_id": node.get("z", ""), "flow_label": _label(node.get("z", "")),
                 "match_in": match_in, "snippet": snippet,
             })
             if len(results) >= max_results:

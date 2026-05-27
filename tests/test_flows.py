@@ -213,3 +213,17 @@ async def test_summary_includes_subflows(sf_client):
     assert by_id["sfdef"]["instance_count"] == 1
     assert by_id["nestdef"]["node_count"] == 1
     assert by_id["nestdef"]["instance_count"] == 1   # 'nest' inside sfdef
+
+
+@pytest.mark.asyncio
+async def test_search_finds_subflow_definition(sf_client):
+    res = await flows.search_nodes(sf_client, query="seasonSwitch")
+    ids = {r["id"] for r in res["results"]}
+    assert "sfdef" in ids        # the definition node is now searchable
+
+
+@pytest.mark.asyncio
+async def test_search_labels_internal_node_with_subflow_name(sf_client):
+    res = await flows.search_nodes(sf_client, query="getSeason")
+    hit = next(r for r in res["results"] if r["id"] == "getS")
+    assert hit["flow_label"] == "seasonSwitch"
