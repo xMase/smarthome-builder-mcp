@@ -149,3 +149,16 @@ async def test_get_subflow_lists_instances_with_wired_outputs(sf_client):
     assert res["instances"] == [
         {"node_id": "inst1", "flow_id": "tabA", "flow_label": "Main", "wired_outputs": [1]}
     ]
+
+
+@pytest.mark.asyncio
+async def test_resolve_subflow_skips_wire_without_id():
+    from tests.conftest import FakeNRClient
+    flows_with_bad_wire = [
+        {"id": "sf", "type": "subflow", "name": "x",
+         "in": [], "out": [{"wires": [{"port": 0}, {"id": "ok", "port": 1}]}],
+         "outputLabels": ["o0"]},
+        {"id": "ok", "type": "debug", "z": "sf", "wires": [[]]},
+    ]
+    res = await flows.get_subflow(FakeNRClient(flows=flows_with_bad_wire), "sf")
+    assert res["outputs"][0]["sources"] == [{"node_id": "ok", "port": 1}]
