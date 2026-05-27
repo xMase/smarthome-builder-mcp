@@ -118,3 +118,62 @@ async def delete_subflow(client, store, settings, *, subflow, cascade=False, con
 
     summary = f"delete subflow {def_id}" + (" (cascade)" if cascade else "")
     return await commit(client, store, settings, rebuild=rebuild, summary=summary, confirm=confirm)
+
+
+async def create_subflow(client, store, settings, *, name, internal_nodes, outputs,
+                         input_to=None, status_from=None, env=None, confirm=False):
+    for n in internal_nodes:
+        if not n.get("id") or not n.get("type"):
+            raise NRError(f"internal node missing 'id' or 'type': {n}")
+    internal_ids = [n["id"] for n in internal_nodes]
+    if len(set(internal_ids)) != len(internal_ids):
+        raise NRError(f"duplicate internal node ids: {internal_ids}")
+    input_list = ([] if input_to is None
+                  else [input_to] if isinstance(input_to, str) else list(input_to))
+
+    flows, _ = await client.get_flows()
+    def_id = _new_node_id({f["id"] for f in flows} | set(internal_ids))
+
+    id_set = set(internal_ids)
+    for o in outputs:
+        if o.get("source", {}).get("node_id") not in id_set:
+            raise NRError(f"output source '{o.get('source', {}).get('node_id')}' "
+                          f"is not one of the internal nodes")
+    for t in input_list:
+        if t not in id_set:
+            raise NRError(f"input_to '{t}' is not one of the internal nodes")
+    if status_from is not None and status_from.get("node_id") not in id_set:
+        raise NRError(f"status_from '{status_from.get('node_id')}' "
+                      f"is not one of the internal nodes")
+
+    def rebuild(fl):
+        existing = {f["id"] for f in fl}
+        clash = (set(internal_ids) | {def_id}) & existing
+        if clash:
+            raise NRError(f"node id(s) already exist: {sorted(clash)}")
+        def_node = {
+            "id": def_id, "type": "subflow", "name": name,
+            "in": ([{"x": 60, "y": 60, "wires": [{"id": t} for t in input_list]}]
+                   if input_list else []),
+            "out": [{"x": 600, "y": 40 + 60 * i,
+                     "wires": [{"id": o["source"]["node_id"],
+                                "port": o["source"].get("port", 0)}]}
+                    for i, o in enumerate(outputs)],
+            "outputLabels": [o.get("label") or f"out {i}" for i, o in enumerate(outputs)],
+            "env": env or [], "color": "#DDAA99",
+        }
+        if status_from is not None:
+            def_node["status"] = {"x": 600, "y": 40 + 60 * len(outputs),
+                                  "wires": [{"id": status_from["node_id"],
+                                             "port": status_from.get("port", 0)}]}
+        internals = []
+        for n in internal_nodes:
+            m = copy.deepcopy(n)
+            m["z"] = def_id
+            internals.append(m)
+        return copy.deepcopy(fl) + [def_node] + internals
+
+    result = await commit(client, store, settings, rebuild=rebuild,
+                          summary=f"create subflow {def_id} ({name})", confirm=confirm)
+    result["subflow_id"] = def_id
+    return result

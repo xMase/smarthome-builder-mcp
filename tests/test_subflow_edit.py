@@ -217,3 +217,73 @@ async def test_instantiate_propose_returns_node_id_without_writing(settings_prop
     assert res["deployed"] is False
     assert "node_id" in res                               # id surfaced even in propose mode
     assert client.post_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_subflow_builds_definition_and_ports(settings_auto, tmp_path):
+    client = FakeNRClient(flows=[{"id": "tab1", "type": "tab", "label": "Main"}])
+    store = BackupStore(str(tmp_path))
+    res = await subflow_edit.create_subflow(
+        client, store, settings_auto,
+        name="newSub",
+        internal_nodes=[
+            {"id": "a", "type": "switch", "wires": [[], []]},
+            {"id": "b", "type": "change", "wires": [[]]},
+        ],
+        outputs=[
+            {"label": "lo", "source": {"node_id": "a", "port": 0}},
+            {"label": "hi", "source": {"node_id": "a", "port": 1}},
+        ],
+        input_to="a",
+        status_from={"node_id": "b", "port": 0},
+        confirm=True)
+    assert res["deployed"] is True
+    def_id = res["subflow_id"]
+    flows, _ = await client.get_flows()
+    sf = next(f for f in flows if f["id"] == def_id)
+    assert sf["type"] == "subflow"
+    assert sf["name"] == "newSub"
+    assert sf["in"][0]["wires"] == [{"id": "a"}]
+    assert sf["outputLabels"] == ["lo", "hi"]
+    assert sf["out"][1]["wires"] == [{"id": "a", "port": 1}]
+    assert sf["status"]["wires"] == [{"id": "b", "port": 0}]
+    a = next(f for f in flows if f["id"] == "a")
+    assert a["z"] == def_id
+
+
+@pytest.mark.asyncio
+async def test_create_subflow_bad_output_source_raises(settings_auto, tmp_path):
+    client = FakeNRClient(flows=[{"id": "tab1", "type": "tab", "label": "Main"}])
+    store = BackupStore(str(tmp_path))
+    with pytest.raises(NRError):
+        await subflow_edit.create_subflow(
+            client, store, settings_auto, name="x",
+            internal_nodes=[{"id": "a", "type": "change", "wires": [[]]}],
+            outputs=[{"source": {"node_id": "ghost"}}], confirm=True)
+
+
+@pytest.mark.asyncio
+async def test_create_subflow_internal_id_clash_raises(settings_auto, tmp_path):
+    client = FakeNRClient(flows=[
+        {"id": "tab1", "type": "tab", "label": "Main"},
+        {"id": "dup", "type": "debug", "z": "tab1", "wires": [[]]},
+    ])
+    store = BackupStore(str(tmp_path))
+    with pytest.raises(NRError):
+        await subflow_edit.create_subflow(
+            client, store, settings_auto, name="x",
+            internal_nodes=[{"id": "dup", "type": "change", "wires": [[]]}],
+            outputs=[], confirm=True)
+
+
+@pytest.mark.asyncio
+async def test_create_subflow_propose_writes_nothing(settings_propose, tmp_path):
+    client = FakeNRClient(flows=[{"id": "tab1", "type": "tab", "label": "Main"}])
+    store = BackupStore(str(tmp_path))
+    res = await subflow_edit.create_subflow(
+        client, store, settings_propose, name="x",
+        internal_nodes=[{"id": "a", "type": "change", "wires": [[]]}],
+        outputs=[{"source": {"node_id": "a"}}], confirm=False)
+    assert res["deployed"] is False
+    assert "subflow_id" in res
+    assert client.post_calls == []
