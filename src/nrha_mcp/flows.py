@@ -200,9 +200,30 @@ def _resolve_subflow(flows: list[dict], def_id: str) -> dict:
     }
 
 
+def _find_subflow_def_id(flows: list[dict], name_or_id: str) -> str:
+    node = next((f for f in flows if f.get("id") == name_or_id), None)
+    if node is not None:
+        t = node.get("type", "")
+        if t == "subflow":
+            return name_or_id
+        if t.startswith("subflow:"):
+            return t.split(":", 1)[1]
+    q = name_or_id.lower()
+    defs = [f for f in flows if f.get("type") == "subflow"]
+    exact = [d for d in defs if d.get("name", "").lower() == q]
+    matches = exact or [d for d in defs if q in d.get("name", "").lower()]
+    if len(matches) == 1:
+        return matches[0]["id"]
+    if len(matches) > 1:
+        raise NRNotFoundError(f"Ambiguous subflow name '{name_or_id}'. "
+                              f"Matches: {[m.get('name') for m in matches]}")
+    raise NRNotFoundError(f"Subflow not found: '{name_or_id}'")
+
+
 async def get_subflow(client: NRClient, name_or_id: str) -> dict:
     flows, _ = await client.get_flows()
-    return _resolve_subflow(flows, name_or_id)
+    def_id = _find_subflow_def_id(flows, name_or_id)
+    return _resolve_subflow(flows, def_id)
 
 
 def _read_context(data: dict, *, scope: dict, key: str | None, not_found: str) -> dict:
