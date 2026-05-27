@@ -1,8 +1,9 @@
-"""Home Assistant Long-Term Statistics over the HA WebSocket API.
+"""Home Assistant queries over the WebSocket API at ws(s)://<ha>/api/websocket.
 
-LTS is not on the REST API; it is served by `recorder/statistics_during_period`
-over ws(s)://<ha>/api/websocket. The transport sits behind an injectable `connect`
-so tests feed frames without a live server (mirrors runtime.py).
+Two consumers live here: long-term statistics (recorder/statistics_during_period,
+which is not on the REST API) and Node-RED Companion integration detection
+(config_entries/get). The transport sits behind an injectable `connect` so tests feed
+frames without a live server (mirrors runtime.py).
 """
 import json
 from datetime import datetime, timedelta, timezone
@@ -10,8 +11,8 @@ from datetime import datetime, timedelta, timezone
 from .client import NRError
 
 
-class HAStatsError(NRError):
-    """HA WebSocket auth or statistics-command failure (an expected, surfaced error)."""
+class HAWsError(NRError):
+    """HA WebSocket auth or command failure (an expected, surfaced error)."""
 
 
 def _ws_url(ha_url: str) -> str:
@@ -52,12 +53,16 @@ async def _default_connect(settings):
     return _HAWsConn(ws)
 
 
-async def _query_statistics(conn, token, *, statistic_id, start_iso, period, types) -> dict:
+async def _auth(conn, token) -> None:
     await conn.recv()  # auth_required greeting
     await conn.send({"type": "auth", "access_token": token})
     auth = await conn.recv()
     if auth.get("type") != "auth_ok":
-        raise HAStatsError(f"HA WebSocket auth failed: {auth.get('type')}")
+        raise HAWsError(f"HA WebSocket auth failed: {auth.get('type')}")
+
+
+async def _query_statistics(conn, token, *, statistic_id, start_iso, period, types) -> dict:
+    await _auth(conn, token)
     await conn.send({
         "id": 1,
         "type": "recorder/statistics_during_period",
@@ -70,7 +75,7 @@ async def _query_statistics(conn, token, *, statistic_id, start_iso, period, typ
         msg = await conn.recv()
         if msg.get("id") == 1 and msg.get("type") == "result":
             if not msg.get("success"):
-                raise HAStatsError(f"statistics query failed: {msg.get('error')}")
+                raise HAWsError(f"statistics query failed: {msg.get('error')}")
             return msg.get("result", {})
 
 
