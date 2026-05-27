@@ -69,6 +69,17 @@ async def nr_get_flow(name_or_id: str, fields: list[str] | None = None) -> str:
 
 
 @mcp.tool()
+async def nr_get_subflow(name_or_id: str) -> str:
+    """Resolve a subflow by name, definition id, or instance id. Returns the
+    definition, its inputs/outputs/status resolved to the internal nodes that feed
+    each port (with output labels), the internal nodes (annotated with where they
+    actually wire, including subflow output ports), pointers to nested subflows, and
+    every instance with which outputs it wires. Use this for subflows; nr_get_flow
+    handles tabs only."""
+    return await _wrap(lambda: flows.get_subflow(client, name_or_id))
+
+
+@mcp.tool()
 async def nr_search_nodes(query: str, type: str | None = None, flow: str | None = None, max_results: int = 20) -> str:
     """Search nodes by name/type/function-code/template."""
     return await _wrap(lambda: flows.search_nodes(client, query, node_type=type, flow=flow, max_results=max_results))
