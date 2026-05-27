@@ -4,6 +4,23 @@ import pytest
 from nrha_mcp import flows
 from nrha_mcp.client import NRNotFoundError
 
+DISABLED_FLOWS = [
+    {"id": "tabOn", "type": "tab", "label": "Active"},
+    {"id": "tabOff", "type": "tab", "label": "Parked", "disabled": True},
+    {"id": "nOn", "type": "inject", "z": "tabOn", "name": "live", "wires": [[]]},
+    {"id": "nOff", "type": "inject", "z": "tabOff", "name": "on parked tab", "wires": [[]]},
+    {"id": "nDis", "type": "function", "z": "tabOn", "name": "disabled node",
+     "d": True, "func": "", "wires": [[]]},
+    {"id": "sfdef", "type": "subflow", "name": "SF"},
+    {"id": "nInternal", "type": "change", "z": "sfdef", "name": "inside sf", "wires": [[]]},
+]
+
+
+@pytest.fixture
+def dis_client():
+    from tests.conftest import FakeNRClient
+    return FakeNRClient(flows=DISABLED_FLOWS)
+
 
 @pytest.mark.asyncio
 async def test_summary_counts(fake_client):
@@ -235,3 +252,34 @@ async def test_node_config_flow_label_uses_subflow_name(sf_client):
     # consistent with search_nodes (not an empty string)
     res = await flows.get_node_config(sf_client, "getS")
     assert res["_flow_label"] == "seasonSwitch"
+
+
+# --- disabled-state visibility tests ----------------------------------------
+
+@pytest.mark.asyncio
+async def test_summary_marks_disabled_tabs(dis_client):
+    res = await flows.get_flow_summary(dis_client)
+    by_id = {t["id"]: t for t in res["tabs"]}
+    assert by_id["tabOff"]["disabled"] is True
+    assert by_id["tabOn"]["disabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_search_surfaces_disabled_state(dis_client):
+    res = await flows.search_nodes(dis_client, query="")
+    by_id = {r["id"]: r for r in res["results"]}
+    assert by_id["nOff"]["flow_disabled"] is True
+    assert by_id["nOn"]["flow_disabled"] is False
+    assert by_id["nDis"]["node_disabled"] is True
+    assert by_id["nOn"]["node_disabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_node_config_surfaces_disabled(dis_client):
+    on_off_tab = await flows.get_node_config(dis_client, "nOff")
+    assert on_off_tab["_flow_disabled"] is True
+    dnode = await flows.get_node_config(dis_client, "nDis")
+    assert dnode["_disabled"] is True
+    assert dnode["_flow_disabled"] is False
+    internal = await flows.get_node_config(dis_client, "nInternal")
+    assert internal["_flow_disabled"] is False
