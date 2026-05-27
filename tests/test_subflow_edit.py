@@ -185,3 +185,35 @@ async def test_delete_propose_mode_writes_nothing(settings_propose, tmp_path):
     assert res["deployed"] is False
     assert "preview" in res
     assert client.post_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_cascade_cleans_wires_pointing_to_instances(settings_auto, tmp_path):
+    # a node on the tab wires TO an instance; cascade must strip that dangling ref
+    flows0 = [
+        {"id": "tab1", "type": "tab", "label": "Main"},
+        {"id": "sf", "type": "subflow", "name": "mySub", "in": [],
+         "out": [{"wires": []}], "outputLabels": ["a"]},
+        {"id": "inst1", "type": "subflow:sf", "z": "tab1", "name": "i1", "wires": [[]]},
+        {"id": "up", "type": "inject", "z": "tab1", "wires": [["inst1"]]},
+    ]
+    client = FakeNRClient(flows=flows0)
+    store = BackupStore(str(tmp_path))
+    res = await subflow_edit.delete_subflow(
+        client, store, settings_auto, subflow="sf", cascade=True, confirm=True)
+    assert res["deployed"] is True
+    flows, _ = await client.get_flows()
+    assert {f["id"] for f in flows} == {"tab1", "up"}     # sf + inst1 removed
+    up = next(f for f in flows if f["id"] == "up")
+    assert up["wires"] == [[]]                            # dangling ref to inst1 cleaned
+
+
+@pytest.mark.asyncio
+async def test_instantiate_propose_returns_node_id_without_writing(settings_propose, tmp_path):
+    client = _client()
+    store = BackupStore(str(tmp_path))
+    res = await subflow_edit.instantiate_subflow(
+        client, store, settings_propose, subflow="mySub", z="tab1", confirm=False)
+    assert res["deployed"] is False
+    assert "node_id" in res                               # id surfaced even in propose mode
+    assert client.post_calls == []
