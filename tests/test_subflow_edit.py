@@ -112,3 +112,27 @@ async def test_add_port_propose_mode_writes_nothing(settings_propose, tmp_path):
     assert res["deployed"] is False
     assert "preview" in res
     assert client.post_calls == []
+
+
+@pytest.mark.asyncio
+async def test_remove_port_syncs_definition_and_all_instances(settings_auto, tmp_path):
+    client = _client()
+    store = BackupStore(str(tmp_path))
+    res = await subflow_edit.remove_subflow_port(
+        client, store, settings_auto, subflow="sf", index=0, confirm=True)
+    assert res["deployed"] is True
+    flows, _ = await client.get_flows()
+    sf = next(f for f in flows if f["id"] == "sf")
+    assert len(sf["out"]) == 1
+    assert sf["outputLabels"] == ["b"]
+    inst1 = next(f for f in flows if f["id"] == "inst1")
+    assert inst1["wires"] == [[]]            # old slot 0 (->d1) gone; slot 1 ([]) remains
+
+
+@pytest.mark.asyncio
+async def test_remove_port_out_of_range_raises(settings_auto, tmp_path):
+    client = _client()
+    store = BackupStore(str(tmp_path))
+    with pytest.raises(NRError):
+        await subflow_edit.remove_subflow_port(
+            client, store, settings_auto, subflow="sf", index=5, confirm=True)

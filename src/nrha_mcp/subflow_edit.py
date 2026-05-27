@@ -66,3 +66,29 @@ async def add_subflow_port(client, store, settings, *, subflow, label=None,
 
     return await commit(client, store, settings, rebuild=rebuild,
                         summary=f"add output port to subflow {def_id}", confirm=confirm)
+
+
+async def remove_subflow_port(client, store, settings, *, subflow, index, confirm=False):
+    flows, _ = await client.get_flows()
+    def_id = _find_subflow_def_id(flows, subflow)
+
+    def rebuild(fl):
+        new = copy.deepcopy(fl)
+        sf = next(f for f in new if f.get("id") == def_id and f.get("type") == "subflow")
+        out = sf.get("out", [])
+        if not (0 <= index < len(out)):
+            raise NRError(f"Output port {index} out of range (0..{len(out) - 1})")
+        del out[index]
+        labels = sf.get("outputLabels", [])
+        if index < len(labels):
+            del labels[index]
+        for f in new:
+            if f.get("type") == f"subflow:{def_id}":
+                w = f.get("wires", [])
+                if index < len(w):
+                    del w[index]
+        return new
+
+    return await commit(client, store, settings, rebuild=rebuild,
+                        summary=f"remove output port {index} from subflow {def_id}",
+                        confirm=confirm)
