@@ -217,6 +217,20 @@ async def nr_delete_subflow(subflow: str, cascade: bool = False, confirm: bool =
     return await _wrap(lambda: subflow_edit.delete_subflow(client, store, settings, subflow=subflow, cascade=cascade, confirm=confirm))
 
 
+@mcp.tool()
+async def nr_create_subflow(name: str, internal_nodes: list[dict], outputs: list[dict],
+                            input_to: str | list[str] | None = None,
+                            status_from: dict | None = None,
+                            env: list[dict] | None = None, confirm: bool = False) -> str:
+    """Create a subflow definition from scratch: assembles the definition node +
+    internal nodes (z auto-set) + validated port wiring in one atomic deploy.
+    `outputs`=[{label?, source:{node_id, port?}}]; `input_to`=internal id or list;
+    `status_from`={node_id, port?}. Returns subflow_id. Confirm-gated, backup-first."""
+    return await _wrap(lambda: subflow_edit.create_subflow(client, store, settings,
+        name=name, internal_nodes=internal_nodes, outputs=outputs,
+        input_to=input_to, status_from=status_from, env=env, confirm=confirm))
+
+
 # ---- backups ----
 @mcp.tool()
 async def nr_backup_flow() -> str:
