@@ -123,6 +123,7 @@ async def get_node_config(client: NRClient, node_id: str) -> dict:
     if not node:
         raise NRNotFoundError(f"Node not found: {node_id}")
     tabs = {f["id"]: f.get("label", "") for f in flows if f.get("type") == "tab"}
+    subflow_names = {f["id"]: f.get("name", "") for f in flows if f.get("type") == "subflow"}
     groups = [f for f in flows if f.get("type") == "group"]
     downstream = []
     for wl in node.get("wires", []):
@@ -138,7 +139,7 @@ async def get_node_config(client: NRClient, node_id: str) -> dict:
             group_label = g.get("name", g.get("label", ""))
             break
     result = dict(node)
-    result["_flow_label"] = tabs.get(node.get("z", ""), "")
+    result["_flow_label"] = tabs.get(node.get("z", "")) or subflow_names.get(node.get("z", ""), "")
     result["_group_label"] = group_label
     result["_downstream"] = downstream
     result["_upstream"] = upstream

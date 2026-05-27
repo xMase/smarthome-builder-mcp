@@ -49,9 +49,9 @@ wrong-tool detour through `nr_get_flow`.
   as a node carrying its `def_id`/`def_name` (a pointer); the agent calls
   `nr_get_subflow` again to drill down. An optional `expand`/`max_depth` is a trivial
   later add if a real need appears — deferred (YAGNI).
-- **Per-instance `env` merge semantics.** We surface the definition's declared `env`
-  and, on instances, list their `env` overrides verbatim; we do not compute the
-  effective merged environment.
+- **Per-instance `env`.** We surface the definition's declared `env` (in the
+  resolved subflow). We do NOT surface each instance's `env` overrides, nor compute
+  the effective merged environment — that is a follow-up.
 
 ## Design
 

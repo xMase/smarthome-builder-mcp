@@ -227,3 +227,11 @@ async def test_search_labels_internal_node_with_subflow_name(sf_client):
     res = await flows.search_nodes(sf_client, query="getSeason")
     hit = next(r for r in res["results"] if r["id"] == "getS")
     assert hit["flow_label"] == "seasonSwitch"
+
+
+@pytest.mark.asyncio
+async def test_node_config_flow_label_uses_subflow_name(sf_client):
+    # an internal subflow node reports its subflow's name as _flow_label,
+    # consistent with search_nodes (not an empty string)
+    res = await flows.get_node_config(sf_client, "getS")
+    assert res["_flow_label"] == "seasonSwitch"
