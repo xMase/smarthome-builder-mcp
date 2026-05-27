@@ -202,3 +202,14 @@ async def test_node_config_on_internal_node_feeding_port(sf_client):
 async def test_node_config_on_subflow_instance(sf_client):
     res = await flows.get_node_config(sf_client, "inst1")
     assert res["_subflow_def"] == {"id": "sfdef", "name": "seasonSwitch"}
+
+
+@pytest.mark.asyncio
+async def test_summary_includes_subflows(sf_client):
+    res = await flows.get_flow_summary(sf_client)
+    by_id = {s["id"]: s for s in res["subflows"]}
+    assert by_id["sfdef"]["name"] == "seasonSwitch"
+    assert by_id["sfdef"]["node_count"] == 3
+    assert by_id["sfdef"]["instance_count"] == 1
+    assert by_id["nestdef"]["node_count"] == 1
+    assert by_id["nestdef"]["instance_count"] == 1   # 'nest' inside sfdef

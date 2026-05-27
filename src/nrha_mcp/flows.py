@@ -22,7 +22,15 @@ async def get_flow_summary(client: NRClient) -> dict:
                 "id": group["id"], "label": group.get("name", group.get("label", "")),
                 "node_count": len(group.get("nodes", [])),
             })
-    return {"total_nodes": len(nodes), "total_tabs": len(tabs), "tabs": list(tab_map.values())}
+    subflows = []
+    for sf in (n for n in flows if n.get("type") == "subflow"):
+        subflows.append({
+            "id": sf["id"], "name": sf.get("name", ""),
+            "node_count": sum(1 for n in flows if n.get("z") == sf["id"]),
+            "instance_count": sum(1 for n in flows if n.get("type") == f"subflow:{sf['id']}"),
+        })
+    return {"total_nodes": len(nodes), "total_tabs": len(tabs),
+            "tabs": list(tab_map.values()), "subflows": subflows}
 
 
 async def get_flow(client: NRClient, name_or_id: str, fields: list[str] | None = None) -> dict:
