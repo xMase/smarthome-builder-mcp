@@ -10,7 +10,9 @@ async def get_flow_summary(client: NRClient) -> dict:
     nodes = [f for f in flows if f.get("type") not in ("tab", "group", "subflow", "comment") and "z" in f]
     tab_map = {}
     for tab in tabs:
-        tab_map[tab["id"]] = {"id": tab["id"], "label": tab.get("label", ""), "node_count": 0, "groups": []}
+        tab_map[tab["id"]] = {"id": tab["id"], "label": tab.get("label", ""),
+                              "disabled": bool(tab.get("disabled")),
+                              "node_count": 0, "groups": []}
     for node in nodes:
         z = node.get("z", "")
         if z in tab_map:
@@ -68,6 +70,7 @@ async def search_nodes(client: NRClient, query: str, node_type: str | None = Non
                        flow: str | None = None, max_results: int = 20) -> dict:
     flows, _ = await client.get_flows()
     tabs = {f["id"]: f.get("label", "") for f in flows if f.get("type") == "tab"}
+    tab_disabled = {f["id"]: bool(f.get("disabled")) for f in flows if f.get("type") == "tab"}
     subflow_names = {f["id"]: f.get("name", "") for f in flows if f.get("type") == "subflow"}
 
     def _label(z: str) -> str:
@@ -96,6 +99,8 @@ async def search_nodes(client: NRClient, query: str, node_type: str | None = Non
             results.append({
                 "id": node["id"], "name": node.get("name", ""), "type": node.get("type", ""),
                 "flow_id": node.get("z", ""), "flow_label": _label(node.get("z", "")),
+                "flow_disabled": tab_disabled.get(node.get("z", ""), False),
+                "node_disabled": bool(node.get("d")),
                 "match_in": match_in, "snippet": snippet,
             })
             if len(results) >= max_results:
@@ -123,6 +128,7 @@ async def get_node_config(client: NRClient, node_id: str) -> dict:
     if not node:
         raise NRNotFoundError(f"Node not found: {node_id}")
     tabs = {f["id"]: f.get("label", "") for f in flows if f.get("type") == "tab"}
+    tab_disabled = {f["id"]: bool(f.get("disabled")) for f in flows if f.get("type") == "tab"}
     subflow_names = {f["id"]: f.get("name", "") for f in flows if f.get("type") == "subflow"}
     groups = [f for f in flows if f.get("type") == "group"]
     downstream = []
@@ -140,6 +146,8 @@ async def get_node_config(client: NRClient, node_id: str) -> dict:
             break
     result = dict(node)
     result["_flow_label"] = tabs.get(node.get("z", "")) or subflow_names.get(node.get("z", ""), "")
+    result["_flow_disabled"] = tab_disabled.get(node.get("z", ""), False)
+    result["_disabled"] = bool(node.get("d"))
     result["_group_label"] = group_label
     result["_downstream"] = downstream
     result["_upstream"] = upstream
