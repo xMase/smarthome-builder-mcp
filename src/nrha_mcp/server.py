@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from .config import Settings
 from .client import NRClient, NRError
 from .backup import BackupStore
-from . import flows, edit, modules, ha, runtime, validate, deploy, diagnostics, ha_stats
+from . import flows, edit, modules, ha, runtime, validate, deploy, diagnostics, ha_stats, subflow_edit
 
 settings = Settings()
 client = NRClient(settings)
@@ -191,6 +191,30 @@ async def nr_create_nodes(nodes: list[dict], confirm: bool = False, description:
 async def nr_delete_nodes(node_ids: list[str], confirm: bool = False, description: str | None = None) -> str:
     """Delete nodes by id (cleans group/wire refs). Confirm-gated, backup-first."""
     return await _wrap(lambda: edit.delete_nodes(client, store, settings, node_ids=node_ids, confirm=confirm, description=description))
+
+
+@mcp.tool()
+async def nr_instantiate_subflow(subflow: str, z: str, name: str | None = None, env: list[dict] | None = None, confirm: bool = False) -> str:
+    """Instantiate a subflow (by name/def-id/instance-id) on tab `z` with the correct number of output wire slots. Returns the new node_id. Confirm-gated, backup-first."""
+    return await _wrap(lambda: subflow_edit.instantiate_subflow(client, store, settings, subflow=subflow, z=z, name=name, env=env, confirm=confirm))
+
+
+@mcp.tool()
+async def nr_add_subflow_port(subflow: str, label: str | None = None, source: dict | None = None, confirm: bool = False) -> str:
+    """Append an output port to a subflow, synced to the definition AND every instance's wires. `source`={node_id,port} wires the new port to an internal node. Confirm-gated, backup-first."""
+    return await _wrap(lambda: subflow_edit.add_subflow_port(client, store, settings, subflow=subflow, label=label, source=source, confirm=confirm))
+
+
+@mcp.tool()
+async def nr_remove_subflow_port(subflow: str, index: int, confirm: bool = False) -> str:
+    """Remove output port `index` from a subflow, synced to the definition AND every instance's wires. Confirm-gated, backup-first."""
+    return await _wrap(lambda: subflow_edit.remove_subflow_port(client, store, settings, subflow=subflow, index=index, confirm=confirm))
+
+
+@mcp.tool()
+async def nr_delete_subflow(subflow: str, cascade: bool = False, confirm: bool = False) -> str:
+    """Delete a subflow definition + its internal nodes. Refuses if instances exist unless cascade=true (which also deletes the instances). Confirm-gated, backup-first."""
+    return await _wrap(lambda: subflow_edit.delete_subflow(client, store, settings, subflow=subflow, cascade=cascade, confirm=confirm))
 
 
 # ---- backups ----
