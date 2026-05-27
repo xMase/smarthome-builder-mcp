@@ -137,7 +137,8 @@ def _subflow_name(flows: list[dict], def_id: str) -> str:
 
 
 def _port_sources(port: dict) -> list[dict]:
-    return [{"node_id": w["id"], "port": w.get("port", 0)} for w in port.get("wires", [])]
+    return [{"node_id": w["id"], "port": w.get("port", 0)}
+            for w in port.get("wires", []) if w.get("id")]
 
 
 def _resolve_subflow(flows: list[dict], def_id: str) -> dict:
@@ -149,7 +150,8 @@ def _resolve_subflow(flows: list[dict], def_id: str) -> dict:
     for i, port in enumerate(sf.get("out", [])):
         label = labels[i] if i < len(labels) and labels[i] else f"out {i}"
         outputs.append({"index": i, "label": label, "sources": _port_sources(port)})
-    inputs = [{"index": i, "wires": [{"node_id": w["id"]} for w in port.get("wires", [])]}
+    inputs = [{"index": i,
+               "wires": [{"node_id": w["id"]} for w in port.get("wires", []) if w.get("id")]}
               for i, port in enumerate(sf.get("in", []))]
     status = {"sources": _port_sources(sf["status"])} if sf.get("status") else None
 
@@ -183,6 +185,7 @@ def _resolve_subflow(flows: list[dict], def_id: str) -> dict:
     inst_type = f"subflow:{def_id}"
     for f in flows:
         if f.get("type") == inst_type:
+            # wl is [] for an unconnected output port, a non-empty list when connected
             wired = [i for i, wl in enumerate(f.get("wires", [])) if wl]
             instances.append({"node_id": f["id"], "flow_id": f.get("z", ""),
                               "flow_label": tabs.get(f.get("z", ""), ""), "wired_outputs": wired})
