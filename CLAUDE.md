@@ -72,10 +72,11 @@ So default behavior is a two-call loop: call a tool → read the preview → cal
 
 ## Conventions & gotchas
 
-- **The registered tool set (and its exact count) is asserted in TWO places.** When you add/remove/rename a tool you
+- **The registered tool set (and its exact count) is declared in THREE places.** When you add/remove/rename a tool you
   must update all three: the `@mcp.tool()` in `server.py`, the `expected` set **and** the
   `len(names) == N` count in `tests/test_server_smoke.py`, and `EXPECTED_TOOLS` in
-  `scripts/smoke_e2e.py`. Missing one breaks the smoke test.
+  `scripts/smoke_e2e.py`. `tests/test_tool_count_sync.py` guards this — it fails and names the exact
+  divergence if any of the three drifts from the tools registered in `server.py`.
 - **Authoring HA nodes:** resolve `entity_id` via `ha_search_entities` first; reuse an existing
   source node when one already provides the data; to build a new HA node, clone an existing node of
   the same type via `nr_search_nodes`; avoid deprecated fields `state_type`/`stateType` (use
