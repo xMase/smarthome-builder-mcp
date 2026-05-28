@@ -132,6 +132,11 @@ class HARestClient:
         r.raise_for_status()
         return r.json()
 
+    async def call_service(self, domain: str, service: str, body: dict) -> list[dict]:
+        r = await self._client.post(f"/api/services/{domain}/{service}", json=body)
+        r.raise_for_status()
+        return r.json()  # array of state objects that changed (often [])
+
     async def get_history(self, entity_id: str, start_iso: str, end_iso: str | None = None) -> list:
         params = {"filter_entity_id": entity_id, "minimal_response": "", "no_attributes": ""}
         if end_iso:
