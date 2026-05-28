@@ -63,11 +63,13 @@ FAKE_HISTORY = [
 class FakeHAClient:
     """Minimal fake HA REST client for unit tests."""
 
-    def __init__(self, states=None, state_map=None, services=None, history=None):
+    def __init__(self, states=None, state_map=None, services=None, history=None, call_result=None):
         self._states = states or FAKE_STATES
         self._state_map = state_map or {s["entity_id"]: s for s in self._states}
         self._services = services if services is not None else FAKE_SERVICES
         self._history = history if history is not None else FAKE_HISTORY
+        self._call_result = call_result if call_result is not None else []
+        self.calls = []
 
     async def get_states(self):
         return list(self._states)
@@ -82,6 +84,10 @@ class FakeHAClient:
 
     async def get_history(self, entity_id, start_iso, end_iso=None):
         return [list(self._history)]
+
+    async def call_service(self, domain, service, body):
+        self.calls.append((domain, service, body))
+        return list(self._call_result)
 
 
 @pytest.mark.asyncio
@@ -285,3 +291,54 @@ async def test_harestclient_call_service_posts_body_and_returns_changed():
     assert route.called
     assert _json.loads(route.calls.last.request.content) == {"entity_id": "light.k"}
     assert out == [{"entity_id": "light.k", "state": "on", "attributes": {"brightness": 5}}]
+
+
+# --- ha_call_service: orchestrator ---
+
+@pytest.mark.asyncio
+async def test_call_service_direct_executes_and_trims():
+    fake = FakeHAClient(call_result=[{"entity_id": "light.k", "state": "on",
+                                      "attributes": {"brightness": 5}}])
+    out = await ha.call_service(fake, Settings(), "light", "turn_on", entity_id="light.k")
+    assert fake.calls == [("light", "turn_on", {"entity_id": "light.k"})]
+    assert out["ok"] is True and out["called"] == "light.turn_on"
+    assert out["changed"] == [{"entity_id": "light.k", "state": "on"}]
+    assert out["changed_count"] == 1 and "note" not in out
+
+@pytest.mark.asyncio
+async def test_call_service_empty_changed_adds_note():
+    fake = FakeHAClient(call_result=[])
+    out = await ha.call_service(fake, Settings(), "script", "test", entity_id="script.test")
+    assert out["changed"] == [] and out["changed_count"] == 0
+    assert "verify with ha_get_state" in out["note"]
+
+@pytest.mark.asyncio
+async def test_call_service_blocked_raises_even_with_confirm():
+    fake = FakeHAClient()
+    with pytest.raises(ha.NRError):
+        await ha.call_service(fake, Settings(), "homeassistant", "restart", confirm=True)
+    assert fake.calls == []
+
+@pytest.mark.asyncio
+async def test_call_service_confirm_tier_previews_without_confirm():
+    fake = FakeHAClient()
+    out = await ha.call_service(fake, Settings(), "lock", "unlock", entity_id="lock.porta")
+    assert out["preview"] is True and out["requires_confirm"] is True
+    assert out["would_call"] == "lock.unlock"
+    assert fake.calls == []
+
+@pytest.mark.asyncio
+async def test_call_service_confirm_tier_executes_with_confirm():
+    fake = FakeHAClient(call_result=[{"entity_id": "lock.porta", "state": "unlocked"}])
+    out = await ha.call_service(fake, Settings(), "lock", "unlock",
+                                entity_id="lock.porta", confirm=True)
+    assert out["ok"] is True
+    assert fake.calls == [("lock", "unlock", {"entity_id": "lock.porta"})]
+
+@pytest.mark.asyncio
+async def test_call_service_entity_id_collision_raises():
+    fake = FakeHAClient()
+    with pytest.raises(ha.NRError):
+        await ha.call_service(fake, Settings(), "light", "turn_on",
+                              entity_id="light.a", data={"entity_id": "light.b"})
+    assert fake.calls == []
