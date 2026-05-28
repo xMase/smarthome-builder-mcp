@@ -49,8 +49,8 @@ async def _connect_ws(client: NRClient):
     return _WebsocketsConn(ws)
 
 
-def _normalize(frame: dict) -> dict | None:
-    """Map a /comms frame to our message dict, or None if it is not a debug/status/notification frame."""
+def _normalize(frame: object) -> dict | None:
+    """Map a single /comms message to our dict, or None if it is not a debug/status/notification frame (or not a dict)."""
     if not isinstance(frame, dict):
         return None
     topic = frame.get("topic", "")

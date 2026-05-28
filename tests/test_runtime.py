@@ -163,3 +163,13 @@ async def test_capture_filters_node_id_within_batch(fake_client):
         connect=_connect_factory(comms))
     assert res["count"] == 1
     assert res["captured"][0]["msg"] == "keep"
+
+
+@pytest.mark.asyncio
+async def test_capture_batch_skips_non_matching_items(fake_client):
+    # a batch mixing a non-debug/status frame (normalizes to None) with a real one
+    comms = FakeComms([_batch({"topic": "unknown", "data": {}}, _debug_frame(msg="keep"))])
+    res = await runtime.capture_debug(
+        fake_client, window_ms=500, max_messages=10, connect=_connect_factory(comms))
+    assert res["count"] == 1
+    assert res["captured"][0]["msg"] == "keep"
