@@ -283,3 +283,26 @@ async def test_node_config_surfaces_disabled(dis_client):
     assert dnode["_flow_disabled"] is False
     internal = await flows.get_node_config(dis_client, "nInternal")
     assert internal["_flow_disabled"] is False
+
+
+# --- nr_export_flow: _resolve_tab helper ---
+
+def test_resolve_tab_by_id_and_name():
+    from nrha_mcp.flows import _resolve_tab
+    flows_list = [
+        {"id": "tabA", "type": "tab", "label": "Heating"},
+        {"id": "tabB", "type": "tab", "label": "Cooling"},
+    ]
+    assert _resolve_tab(flows_list, "tabA")["id"] == "tabA"
+    assert _resolve_tab(flows_list, "cool")["id"] == "tabB"
+
+def test_resolve_tab_ambiguous_and_missing():
+    from nrha_mcp.flows import _resolve_tab
+    flows_list = [
+        {"id": "t1", "type": "tab", "label": "Solar east"},
+        {"id": "t2", "type": "tab", "label": "Solar west"},
+    ]
+    with pytest.raises(NRNotFoundError):
+        _resolve_tab(flows_list, "solar")      # ambiguous
+    with pytest.raises(NRNotFoundError):
+        _resolve_tab(flows_list, "nope")       # missing
