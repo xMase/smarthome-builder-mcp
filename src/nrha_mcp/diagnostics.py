@@ -57,5 +57,6 @@ async def run(client, settings, *, ha_ping=None) -> dict:
             ha_block["reachable"] = False
             ha_block["error"] = type(e).__name__
     out["home_assistant"] = ha_block
+    out["ha_call_policy"] = ha.effective_policy(settings)
 
     return out

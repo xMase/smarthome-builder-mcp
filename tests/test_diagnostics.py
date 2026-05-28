@@ -63,3 +63,13 @@ async def test_diagnostics_ha_unreachable(fake_client):
     res = await diagnostics.run(fake_client, settings, ha_ping=ping_fail)
     assert res["home_assistant"]["reachable"] is False
     assert res["home_assistant"]["error"] == "RuntimeError"
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_reports_call_policy(fake_client):
+    settings = Settings(ha_url="", ha_token="")
+    res = await diagnostics.run(fake_client, settings)
+    pol = res["ha_call_policy"]
+    assert "homeassistant.restart" in pol["blocked"]
+    assert "lock.unlock" in pol["confirm"]
+    assert pol["confirm_source"] == "default"
