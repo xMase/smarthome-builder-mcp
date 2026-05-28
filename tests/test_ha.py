@@ -230,3 +230,39 @@ def test_call_service_settings_defaults():
     s = Settings()
     assert s.ha_block_services == ""
     assert s.ha_confirm_services is None
+
+
+# --- ha_call_service: tier classification ---
+
+def test_tier_floor_blocked():
+    s = Settings()
+    assert ha._service_tier("homeassistant", "restart", s) == "blocked"
+    assert ha._service_tier("hassio", "restore_full", s) == "blocked"
+
+def test_tier_default_confirm_and_direct():
+    s = Settings()
+    assert ha._service_tier("lock", "unlock", s) == "confirm"
+    assert ha._service_tier("alarm_control_panel", "alarm_trigger", s) == "confirm"
+    assert ha._service_tier("light", "turn_on", s) == "direct"
+    assert ha._service_tier("cover", "open_cover", s) == "direct"
+
+def test_tier_block_is_additive_and_wildcard():
+    s = Settings(ha_block_services="cover.*")
+    assert ha._service_tier("cover", "open_cover", s) == "blocked"
+    assert ha._service_tier("homeassistant", "stop", s) == "blocked"   # floor still applies
+
+def test_tier_confirm_override_replaces_default():
+    s = Settings(ha_confirm_services="climate.set_temperature")
+    assert ha._service_tier("lock", "unlock", s) == "direct"           # default replaced
+    assert ha._service_tier("climate", "set_temperature", s) == "confirm"
+
+def test_tier_confirm_empty_gates_nothing_but_floor_holds():
+    s = Settings(ha_confirm_services="")
+    assert ha._service_tier("lock", "unlock", s) == "direct"
+    assert ha._service_tier("homeassistant", "stop", s) == "blocked"
+
+def test_effective_policy_source():
+    assert ha.effective_policy(Settings())["confirm_source"] == "default"
+    cfg = ha.effective_policy(Settings(ha_confirm_services="lock.unlock"))
+    assert cfg["confirm_source"] == "configured"
+    assert cfg["confirm"] == ["lock.unlock"]
