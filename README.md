@@ -25,11 +25,11 @@ care about. Use at your own risk.
 
 ## Tools
 
-38 MCP tools, grouped:
+39 MCP tools, grouped:
 
 | Group | Tools |
 |---|---|
-| **Inspect** (read-only) | `nr_get_flow_summary` (tabs + node counts), `nr_get_flow` (one tab; optional `fields` filter), `nr_get_subflow` (definition, ports→internal nodes, instances), `nr_search_nodes`, `nr_get_function_code`, `nr_get_node_config` (+ up/downstream + group), `nr_get_flow_context`, `nr_get_global_context`, `nr_capture_debug` (live debug/status off the `/comms` WS), `nr_get_runtime_events` (deploy/runtime/system events), `nr_validate_flow` (structure check, no deploy), `nr_diagnostics` (read-only health snapshot) |
+| **Inspect** (read-only) | `nr_get_flow_summary` (tabs + node counts), `nr_get_flow` (one tab; optional `fields` filter), `nr_export_flow` (one tab as an import-ready flat array), `nr_get_subflow` (definition, ports→internal nodes, instances), `nr_search_nodes`, `nr_get_function_code`, `nr_get_node_config` (+ up/downstream + group), `nr_get_flow_context`, `nr_get_global_context`, `nr_capture_debug` (live debug/status off the `/comms` WS), `nr_get_runtime_events` (deploy/runtime/system events), `nr_validate_flow` (structure check, no deploy), `nr_diagnostics` (read-only health snapshot) |
 | **Author & deploy** (confirm-gated, backup-first) | `nr_safe_deploy` (patch one node), `nr_safe_deploy_many` (atomic multi-node), `nr_add_wire` (idempotent), `nr_create_nodes`, `nr_delete_nodes` |
 | **Subflows** (confirm-gated, backup-first) | `nr_create_subflow` (assemble a definition from scratch), `nr_instantiate_subflow` (place an instance on a tab), `nr_add_subflow_port` / `nr_remove_subflow_port` (synced to the definition + every instance), `nr_delete_subflow` |
 | **Backups** | `nr_backup_flow`, `nr_list_backups`, `nr_restore_backup`, `nr_diff` (backup vs current, or backup vs backup) |
