@@ -40,6 +40,10 @@ def _notification_frame(subtopic="runtime-deploy", data=None):
     return {"topic": f"notification/{subtopic}", "data": data if data is not None else {"revision": "abc"}}
 
 
+def _batch(*frames):
+    return list(frames)
+
+
 @pytest.mark.asyncio
 async def test_capture_collects_debug(fake_client):
     comms = FakeComms([_debug_frame(msg="rain")])
@@ -139,3 +143,23 @@ async def test_get_runtime_events_empty_has_hint(fake_client):
         fake_client, window_ms=50, connect=_connect_factory(comms))
     assert res["count"] == 0
     assert "hint" in res
+
+
+@pytest.mark.asyncio
+async def test_capture_handles_batched_array_frame(fake_client):
+    comms = FakeComms([_batch(_debug_frame(msg="a"), _debug_frame(msg="b"))])
+    res = await runtime.capture_debug(
+        fake_client, window_ms=500, max_messages=10, connect=_connect_factory(comms))
+    assert res["count"] == 2
+    assert [m["msg"] for m in res["captured"]] == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_capture_filters_node_id_within_batch(fake_client):
+    comms = FakeComms([_batch(_debug_frame(node_id="d1", msg="keep"),
+                              _debug_frame(node_id="d2", msg="drop"))])
+    res = await runtime.capture_debug(
+        fake_client, window_ms=500, max_messages=10, node_id="d1",
+        connect=_connect_factory(comms))
+    assert res["count"] == 1
+    assert res["captured"][0]["msg"] == "keep"
