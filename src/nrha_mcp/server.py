@@ -69,6 +69,18 @@ async def nr_get_flow(name_or_id: str, fields: list[str] | None = None) -> str:
 
 
 @mcp.tool()
+async def nr_export_flow(name_or_id: str) -> str:
+    """Export one tab as an import-ready Node-RED flow array.
+
+    Returns {flow, tab_id, node_count, group_count} where `flow` is the flat
+    [tab, ...groups, ...nodes] array you can paste into Node-RED's Import dialog or
+    write to a .json file. Full fidelity (no field filtering). Does NOT bundle subflow
+    definitions or global config nodes the tab references — use nr_backup_flow for a
+    complete all-flows snapshot."""
+    return await _wrap(lambda: flows.export_flow(client, name_or_id))
+
+
+@mcp.tool()
 async def nr_get_subflow(name_or_id: str) -> str:
     """Resolve a subflow by name, definition id, or instance id. Returns the
     definition, its inputs/outputs/status resolved to the internal nodes that feed
