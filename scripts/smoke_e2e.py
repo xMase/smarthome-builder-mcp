@@ -27,6 +27,7 @@ BACKUP_DIR = os.environ.get("BACKUP_DIR", "./backups")
 EXPECTED_TOOLS = {
     "nr_get_flow_summary",
     "nr_get_flow",
+    "nr_export_flow",
     "nr_get_subflow",
     "nr_search_nodes",
     "nr_get_function_code",
