@@ -342,3 +342,11 @@ async def test_call_service_entity_id_collision_raises():
         await ha.call_service(fake, Settings(), "light", "turn_on",
                               entity_id="light.a", data={"entity_id": "light.b"})
     assert fake.calls == []
+
+@pytest.mark.asyncio
+async def test_call_service_entity_id_agreeing_in_data_is_accepted():
+    fake = FakeHAClient(call_result=[{"entity_id": "light.a", "state": "on"}])
+    out = await ha.call_service(fake, Settings(), "light", "turn_on",
+                                entity_id="light.a", data={"entity_id": "light.a"})
+    assert out["ok"] is True
+    assert fake.calls == [("light", "turn_on", {"entity_id": "light.a"})]
