@@ -342,6 +342,29 @@ async def ha_get_services(domain: str | None = None) -> str:
 
 
 @mcp.tool()
+async def ha_call_service(domain: str, service: str,
+                          entity_id: str | list[str] | None = None,
+                          data: dict | None = None, confirm: bool = False) -> str:
+    """Call a Home Assistant service (turn on/off, press buttons, nudge covers, set
+    helpers). Requires HA_URL + HA_TOKEN.
+
+    `entity_id` targets one or more entities; `data` carries extra params or non-entity
+    targets (area_id, etc.). Tiered safety: ordinary services run directly; sensitive
+    ones (e.g. lock.unlock, alarm disarm) require confirm=true and otherwise return a
+    preview; a small catastrophic set (e.g. homeassistant.restart) is always blocked.
+    Use ha_get_services to find the right domain/service/fields."""
+    if not settings.ha_url or not settings.ha_token:
+        return _err("HA call_service needs HA_URL and HA_TOKEN to be set.")
+    ha_client = ha.HARestClient(settings)
+    try:
+        return await _wrap(lambda: ha.call_service(
+            ha_client, settings, domain, service,
+            entity_id=entity_id, data=data, confirm=confirm))
+    finally:
+        await ha_client.close()
+
+
+@mcp.tool()
 async def ha_get_entity_history(entity_id: str, hours: int = 24, max_points: int = 200) -> str:
     """Recent state history of a Home Assistant entity. Requires HA_URL + HA_TOKEN.
 

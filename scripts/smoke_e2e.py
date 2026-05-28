@@ -57,6 +57,7 @@ EXPECTED_TOOLS = {
     "ha_get_entity_history",
     "ha_get_entity_statistics",
     "ha_check_nodered_integration",
+    "ha_call_service",
     "nr_instantiate_subflow",
     "nr_add_subflow_port",
     "nr_remove_subflow_port",
