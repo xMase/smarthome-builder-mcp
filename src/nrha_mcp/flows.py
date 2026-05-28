@@ -35,23 +35,26 @@ async def get_flow_summary(client: NRClient) -> dict:
             "tabs": list(tab_map.values()), "subflows": subflows}
 
 
-async def get_flow(client: NRClient, name_or_id: str, fields: list[str] | None = None) -> dict:
-    flows, _ = await client.get_flows()
-    tabs = [f for f in flows if f.get("type") == "tab"]
-    tab = None
-    q = name_or_id.lower()
+def _resolve_tab(all_flows: list[dict], name_or_id: str) -> dict:
+    """Find a tab by id, else by unique label substring. Raises NRNotFoundError on
+    ambiguous or no match."""
+    tabs = [f for f in all_flows if f.get("type") == "tab"]
     for t in tabs:
         if t["id"] == name_or_id:
-            tab = t
-            break
-    if not tab:
-        matches = [t for t in tabs if q in t.get("label", "").lower()]
-        if len(matches) == 1:
-            tab = matches[0]
-        elif len(matches) > 1:
-            raise NRNotFoundError(f"Ambiguous tab name '{name_or_id}'. Matches: {[m.get('label') for m in matches]}")
-        else:
-            raise NRNotFoundError(f"Tab not found: '{name_or_id}'")
+            return t
+    q = name_or_id.lower()
+    matches = [t for t in tabs if q in t.get("label", "").lower()]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise NRNotFoundError(
+            f"Ambiguous tab name '{name_or_id}'. Matches: {[m.get('label') for m in matches]}")
+    raise NRNotFoundError(f"Tab not found: '{name_or_id}'")
+
+
+async def get_flow(client: NRClient, name_or_id: str, fields: list[str] | None = None) -> dict:
+    flows, _ = await client.get_flows()
+    tab = _resolve_tab(flows, name_or_id)
     tab_id = tab["id"]
     nodes = [f for f in flows if f.get("z") == tab_id and f.get("type") != "group"]
     groups = [f for f in flows if f.get("z") == tab_id and f.get("type") == "group"]
