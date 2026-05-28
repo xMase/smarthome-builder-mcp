@@ -63,7 +63,7 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 | `NR_VERIFY_SSL` | `1` | `0` to skip TLS verification (self-signed certs) |
 | `HA_URL` | — | Home Assistant base URL (`:8123`) — **distinct from `NR_URL` (`:1880`)**. Enables `ha_search_entities`/`ha_get_state` for entity discovery during authoring |
 | `HA_TOKEN` | — | Long-lived HA access token (Profile → Long-Lived Access Tokens) |
-| `HA_BLOCK_SERVICES` | — | Comma-separated `domain.service` / `domain.*` entries that `ha_call_service` will always refuse, in addition to the built-in catastrophic floor (homeassistant.stop/restart, hassio host_reboot/host_shutdown/supervisor_restart/restore_full/restore_partial, recorder.purge/purge_entities). Optional; default empty. |
+| `HA_BLOCK_SERVICES` | — | Comma-separated `domain.service` / `domain.*` entries that `ha_call_service` will always refuse, in addition to the built-in catastrophic floor (homeassistant.stop, homeassistant.restart, hassio.host_reboot, hassio.host_shutdown, hassio.supervisor_restart, hassio.restore_full, hassio.restore_partial, recorder.purge, recorder.purge_entities). Optional; default empty. |
 | `HA_CONFIRM_SERVICES` | default set | Comma-separated `domain.service` / `domain.*` entries that require `confirm=true`; without it the tool returns a dry-run preview. Unset = built-in default set (lock.unlock, lock.open, alarm_control_panel.alarm_disarm, alarm_control_panel.alarm_trigger, update.install). Set to empty string to gate nothing. |
 | `DEPLOY_MODE` | `propose` | `propose` (preview, write on `confirm=true`) or `auto` |
 | `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written |
