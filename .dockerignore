@@ -11,3 +11,4 @@ build/
 docker-compose*.yml
 deploy/
 .env
+.pytest_cache
