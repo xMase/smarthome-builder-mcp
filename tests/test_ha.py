@@ -350,3 +350,19 @@ async def test_call_service_entity_id_agreeing_in_data_is_accepted():
                                 entity_id="light.a", data={"entity_id": "light.a"})
     assert out["ok"] is True
     assert fake.calls == [("light", "turn_on", {"entity_id": "light.a"})]
+
+
+@pytest.mark.asyncio
+async def test_call_service_ha_http_error_surfaces_as_nrerror():
+    class FailingHAClient(FakeHAClient):
+        async def call_service(self, domain, service, body):
+            req = httpx.Request("POST", f"http://ha.local/api/services/{domain}/{service}")
+            resp = httpx.Response(400, request=req, text="Service light.turn_on requires return_response")
+            raise httpx.HTTPStatusError("400 Bad Request", request=req, response=resp)
+
+    fake = FailingHAClient()
+    with pytest.raises(ha.NRError) as exc:
+        await ha.call_service(fake, Settings(), "light", "turn_on", entity_id="light.k")
+    msg = str(exc.value)
+    assert "400" in msg
+    assert "requires return_response" in msg   # HA's actual message is preserved
