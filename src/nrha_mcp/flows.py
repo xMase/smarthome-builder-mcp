@@ -69,6 +69,23 @@ async def get_flow(client: NRClient, name_or_id: str, fields: list[str] | None =
     }
 
 
+async def export_flow(client: NRClient, name_or_id: str) -> dict:
+    """Export one tab as an import-ready flat flow array [tab, ...groups, ...nodes].
+    Verbatim (no field filtering). Does not bundle global config nodes or subflow
+    definitions the tab references."""
+    all_flows, _ = await client.get_flows()
+    tab = _resolve_tab(all_flows, name_or_id)
+    tab_id = tab["id"]
+    nodes = [f for f in all_flows if f.get("z") == tab_id and f.get("type") != "group"]
+    groups = [f for f in all_flows if f.get("z") == tab_id and f.get("type") == "group"]
+    return {
+        "flow": [tab, *groups, *nodes],
+        "tab_id": tab_id,
+        "node_count": len(nodes),
+        "group_count": len(groups),
+    }
+
+
 async def search_nodes(client: NRClient, query: str, node_type: str | None = None,
                        flow: str | None = None, max_results: int = 20) -> dict:
     flows, _ = await client.get_flows()
