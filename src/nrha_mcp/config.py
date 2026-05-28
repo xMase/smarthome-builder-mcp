@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     ha_url: str = ""
     ha_token: str = ""
 
+    # Home Assistant service-call safety (ha_call_service)
+    # csv of "domain.service" or "domain.*"
+    ha_block_services: str = ""            # additive to the catastrophic floor
+    ha_confirm_services: str | None = None  # override-with-default: None=default, ""=gate nothing
+
     # Transport
     mcp_transport: Literal["stdio", "http"] = "stdio"
     mcp_http_host: str = "0.0.0.0"

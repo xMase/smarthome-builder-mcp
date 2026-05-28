@@ -222,3 +222,11 @@ async def test_get_entity_history_large_window_has_note():
     fake = FakeHAClient()
     res = await ha.get_entity_history(fake, "sensor.x", hours=9000)
     assert "note" in res
+
+
+# --- ha_call_service: config defaults ---
+
+def test_call_service_settings_defaults():
+    s = Settings()
+    assert s.ha_block_services == ""
+    assert s.ha_confirm_services is None
