@@ -198,5 +198,6 @@ uv pip install -e ".[dev]"
 
 ## Credits & license
 
-MIT. Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) by NXTAssist.ai (incl. its open
-PR #3); see `NOTICE` for attribution.
+MIT (see [`LICENSE`](LICENSE)). Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) by
+NXTAssist.ai (incl. its open PR #3); see [`NOTICE`](NOTICE) and
+[`THIRD-PARTY-NOTICES.txt`](THIRD-PARTY-NOTICES.txt) for attribution and the upstream MIT license.
