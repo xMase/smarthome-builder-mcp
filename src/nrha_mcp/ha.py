@@ -20,6 +20,62 @@ HA_NODE_TYPES = {
 }
 
 
+# --- Service-call safety (ha_call_service) -------------------------------
+
+# Catastrophic services: hardcoded floor, ADDITIVE only (HA_BLOCK_SERVICES can
+# extend it, never shrink it), and confirm=true cannot override a floor block.
+# Finalized for Home Assistant OS (Supervisor restore services present).
+CATASTROPHIC_FLOOR = {
+    "homeassistant.stop", "homeassistant.restart",
+    "hassio.host_reboot", "hassio.host_shutdown", "hassio.supervisor_restart",
+    "hassio.restore_full", "hassio.restore_partial",
+    "recorder.purge", "recorder.purge_entities",
+}
+
+# Sensitive services gated behind confirm=true when HA_CONFIRM_SERVICES is unset.
+DEFAULT_CONFIRM = {
+    "lock.unlock", "lock.open",
+    "alarm_control_panel.alarm_disarm", "alarm_control_panel.alarm_trigger",
+    "update.install",
+}
+
+
+def _parse_service_list(raw: str) -> set[str]:
+    return {t.strip().lower() for t in (raw or "").split(",") if t.strip()}
+
+
+def _block_set(settings) -> set[str]:
+    return CATASTROPHIC_FLOOR | _parse_service_list(settings.ha_block_services)
+
+
+def _confirm_set(settings) -> set[str]:
+    if settings.ha_confirm_services is None:
+        return set(DEFAULT_CONFIRM)
+    return _parse_service_list(settings.ha_confirm_services)
+
+
+def _in_set(domain: str, service: str, s: set[str]) -> bool:
+    return f"{domain}.{service}".lower() in s or f"{domain}.*".lower() in s
+
+
+def _service_tier(domain: str, service: str, settings) -> str:
+    """Return "blocked" | "confirm" | "direct"; precedence block > confirm > direct."""
+    if _in_set(domain, service, _block_set(settings)):
+        return "blocked"
+    if _in_set(domain, service, _confirm_set(settings)):
+        return "confirm"
+    return "direct"
+
+
+def effective_policy(settings) -> dict:
+    """Resolved policy for observability (nr_diagnostics)."""
+    return {
+        "blocked": sorted(_block_set(settings)),
+        "confirm": sorted(_confirm_set(settings)),
+        "confirm_source": "default" if settings.ha_confirm_services is None else "configured",
+    }
+
+
 def _entity_of(node: dict) -> str | None:
     # HA nodes store the entity under different keys across versions
     for k in ("entityId", "entity_id", "entityid"):
