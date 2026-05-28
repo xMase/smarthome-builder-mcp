@@ -51,6 +51,8 @@ async def _connect_ws(client: NRClient):
 
 def _normalize(frame: dict) -> dict | None:
     """Map a /comms frame to our message dict, or None if it is not a debug/status/notification frame."""
+    if not isinstance(frame, dict):
+        return None
     topic = frame.get("topic", "")
     data = frame.get("data", {}) or {}
     if topic == "debug":
@@ -120,14 +122,17 @@ async def capture_debug(
                 frame = await asyncio.wait_for(conn.recv(), timeout=remaining)
             except asyncio.TimeoutError:
                 break
-            msg = _normalize(frame)
-            if msg is None:
-                continue
-            if node_id and msg["node_id"] != node_id:
-                continue
-            if flow_id and msg["flow_id"] != flow_id:
-                continue
-            captured.append(msg)
+            for item in (frame if isinstance(frame, list) else [frame]):
+                msg = _normalize(item)
+                if msg is None:
+                    continue
+                if node_id and msg["node_id"] != node_id:
+                    continue
+                if flow_id and msg["flow_id"] != flow_id:
+                    continue
+                captured.append(msg)
+                if len(captured) >= max_messages:
+                    break
     finally:
         await conn.close()
     result = {
