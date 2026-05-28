@@ -7,7 +7,7 @@ a minimal REST client for live entity discovery.
 import httpx
 from datetime import datetime, timedelta, timezone
 
-from .client import NRClient
+from .client import NRClient, NRError
 from .config import Settings
 
 # Node types provided by node-red-contrib-home-assistant-websocket
@@ -182,6 +182,50 @@ async def get_entity_state(ha_client, entity_id: str) -> dict:
         "state": s.get("state"),
         "attributes": s.get("attributes", {}),
     }
+
+
+async def call_service(ha_client, settings, domain, service,
+                       entity_id=None, data=None, confirm=False) -> dict:
+    """Call a HA service with tiered safety. Returns a trimmed result, or a preview
+    dict when a sensitive service is called without confirm=true."""
+    body = dict(data or {})
+    if entity_id is not None:
+        if "entity_id" in body and body["entity_id"] != entity_id:
+            raise NRError(
+                f"entity_id conflict: param {entity_id!r} but data has {body['entity_id']!r}")
+        body["entity_id"] = entity_id
+
+    called = f"{domain}.{service}"
+    tier = _service_tier(domain, service, settings)
+
+    if tier == "blocked":
+        raise NRError(
+            f"{called} is in the catastrophic block list and cannot be executed; "
+            "confirm=true does not override it.")
+
+    if tier == "confirm" and not confirm:
+        return {
+            "preview": True,
+            "would_call": called,
+            "entity_id": entity_id,
+            "data": dict(data or {}),
+            "tier": "sensitive",
+            "requires_confirm": True,
+            "hint": "re-call with confirm=true to execute.",
+        }
+
+    changed = await ha_client.call_service(domain, service, body)
+    trimmed = [{"entity_id": c.get("entity_id"), "state": c.get("state")} for c in changed]
+    out = {
+        "ok": True,
+        "called": called,
+        "entity_id": entity_id,
+        "changed": trimmed,
+        "changed_count": len(trimmed),
+    }
+    if not trimmed:
+        out["note"] = "No state change reported synchronously; verify with ha_get_state."
+    return out
 
 
 def _trim_field(f: dict) -> dict:
