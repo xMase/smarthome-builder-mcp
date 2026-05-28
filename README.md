@@ -25,15 +25,17 @@ care about. Use at your own risk.
 
 ## Tools
 
-23 MCP tools, grouped:
+38 MCP tools, grouped:
 
 | Group | Tools |
 |---|---|
-| **Inspect** (read-only) | `nr_get_flow_summary`, `nr_get_flow` (optional `fields` filter), `nr_search_nodes`, `nr_get_function_code`, `nr_get_node_config`, `nr_get_flow_context`, `nr_get_global_context`, `nr_get_debug_output` |
+| **Inspect** (read-only) | `nr_get_flow_summary` (tabs + node counts), `nr_get_flow` (one tab; optional `fields` filter), `nr_get_subflow` (definition, ports→internal nodes, instances), `nr_search_nodes`, `nr_get_function_code`, `nr_get_node_config` (+ up/downstream + group), `nr_get_flow_context`, `nr_get_global_context`, `nr_capture_debug` (live debug/status off the `/comms` WS), `nr_get_runtime_events` (deploy/runtime/system events), `nr_validate_flow` (structure check, no deploy), `nr_diagnostics` (read-only health snapshot) |
 | **Author & deploy** (confirm-gated, backup-first) | `nr_safe_deploy` (patch one node), `nr_safe_deploy_many` (atomic multi-node), `nr_add_wire` (idempotent), `nr_create_nodes`, `nr_delete_nodes` |
-| **Backups** | `nr_backup_flow`, `nr_list_backups`, `nr_restore_backup` |
+| **Subflows** (confirm-gated, backup-first) | `nr_create_subflow` (assemble a definition from scratch), `nr_instantiate_subflow` (place an instance on a tab), `nr_add_subflow_port` / `nr_remove_subflow_port` (synced to the definition + every instance), `nr_delete_subflow` |
+| **Backups** | `nr_backup_flow`, `nr_list_backups`, `nr_restore_backup`, `nr_diff` (backup vs current, or backup vs backup) |
 | **Modules & testing** | `nr_get_installed_modules`, `nr_install_module`, `nr_inject` |
-| **Home Assistant** | `ha_list_ha_nodes`, `ha_get_server_config`, `ha_search_entities` (live entity lookup by id/name), `ha_get_state` (current state + attributes) |
+| **Home Assistant** (read) | `ha_search_entities` (live entity lookup by id/name), `ha_get_state` (current state + attributes), `ha_get_services` (discover domains/services for authoring), `ha_get_entity_history`, `ha_get_entity_statistics`, `ha_list_ha_nodes`, `ha_get_server_config`, `ha_check_nodered_integration` |
+| **Home Assistant** (act) | `ha_call_service` — call any HA service (turn on/off, press buttons, nudge covers, set helpers) with a tiered safety gate (see below) |
 
 ## How the safety model works
 
@@ -48,6 +50,19 @@ Every mutating tool runs through one gate:
 
 So in the default `propose` mode the loop is: *call a tool → read the preview → call again with
 `confirm=true` to apply*. A backup is always written before any real change.
+
+**Calling Home Assistant services (`ha_call_service`)** has its own tiered gate, independent of the
+deploy gate above (HA service calls have no undo, so they cannot be backed up):
+
+- A small **catastrophic floor** (e.g. `homeassistant.restart`, `hassio.host_reboot`,
+  `recorder.purge`) is **always refused** — `confirm=true` cannot override it. Extend it, never shrink
+  it, with `HA_BLOCK_SERVICES`.
+- **Sensitive** services (default: `lock.unlock`/`open`, `alarm_control_panel.alarm_disarm`/
+  `alarm_trigger`, `update.install`) return a dry-run **preview** unless you pass `confirm=true`.
+  Tune the set with `HA_CONFIRM_SERVICES`.
+- Everything else runs directly. The effective policy is reported by `nr_diagnostics`. Note: this
+  gates services *at the call boundary* — a `script`/`automation` can still indirectly reach a gated
+  service, so it is a guardrail against direct mistakes, not a sandbox.
 
 ## Configuration
 
