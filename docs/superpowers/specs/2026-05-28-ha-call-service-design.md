@@ -120,7 +120,8 @@ Orchestrates four steps:
 CATASTROPHIC_FLOOR = {          # hardcoded; additive only; confirm cannot override
     "homeassistant.stop", "homeassistant.restart",
     "hassio.host_reboot", "hassio.host_shutdown", "hassio.supervisor_restart",
-    "recorder.purge", "recorder.purge_entities", "backup.restore",
+    "hassio.restore_full", "hassio.restore_partial",
+    "recorder.purge", "recorder.purge_entities",
 }
 DEFAULT_CONFIRM = {             # used when HA_CONFIRM_SERVICES is unset
     "lock.unlock", "lock.open",
@@ -142,10 +143,16 @@ DEFAULT_CONFIRM = {             # used when HA_CONFIRM_SERVICES is unset
 `_parse_service_list(raw: str) -> set[str]`: split on commas, strip, lowercase, drop
 empties. Lives in `ha.py` so `config.py` stays a plain data holder.
 
-> **`backup.restore` (and the `hassio.*` services) must be verified against
-> `ha_get_services` on a real HA before finalizing the floor** — service names vary by
-> HA version/installation (`hassio.*` exist only on supervised/OS installs; blocking
-> an absent service is a harmless no-op).
+Covers stay **direct** by default — the target install's covers are non-dangerous
+roller shutters (tapparelle). A user with a powered gate/garage adds `cover.*` via
+`HA_CONFIRM_SERVICES`.
+
+> **Floor finalized for Home Assistant OS** (the target install): the `hassio.*`
+> services are present, and the destructive restore surface is the Supervisor's
+> `hassio.restore_full`/`hassio.restore_partial`. The core `backup` integration's
+> restore is a UI/onboarding flow, **not** a callable service, so it is omitted; if a
+> future HA version exposes `backup.restore` as a service, add it via
+> `HA_BLOCK_SERVICES`. Blocking an absent service is a harmless no-op.
 
 ### D. Tool — `server.py`
 
@@ -197,7 +204,7 @@ empty* (no confirm gating) — must stay `str | None`, not `str`.
 
 ```json
 {"ha_call_policy": {
-   "blocked": ["backup.restore", "homeassistant.restart", ...],
+   "blocked": ["hassio.restore_full", "homeassistant.restart", ...],
    "confirm": ["alarm_control_panel.alarm_disarm", "lock.unlock", ...],
    "confirm_source": "default" }}
 ```
