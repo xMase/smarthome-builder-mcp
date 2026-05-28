@@ -1,5 +1,17 @@
 # node-red-homeassistant-mcp
 
+> [!CAUTION]
+> **Early alpha — largely untested. Use entirely at your own risk.**
+>
+> This software was **"vibe-coded"** (written by an AI agent under human supervision) and has
+> **not been validated in production**. It can **modify and deploy your Node-RED flows** and
+> **act on your physical Home Assistant setup** — including unlocking locks, disarming alarms,
+> and controlling devices. It may misbehave, lose data, or take unintended real-world actions.
+>
+> It is provided **"AS IS", WITHOUT WARRANTY OF ANY KIND**. The authors accept **no liability
+> for any damage** whatsoever (see [`LICENSE`](LICENSE)). Back up your flows, review the code,
+> and do not point it at anything you cannot afford to break.
+
 MCP server for **Node-RED** with **Home Assistant** awareness and **safe, backup-first deploy**.
 
 It lets an AI assistant (Claude, or any MCP client) **read, author, and deploy Node-RED flows**
@@ -17,11 +29,15 @@ Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) (MIT). See `NOTICE`
 
 ## Status & disclaimer
 
-**Early alpha.** This project was **entirely "vibe-coded"** — written by an AI agent (Claude)
-under human supervision, following a test-driven plan — and is provided **as-is, with no
-warranties of any kind** (see `LICENSE`). It talks to your Node-RED Admin API and can modify and
-deploy flows; review the code and keep a backup of your flows before pointing it at anything you
-care about. Use at your own risk.
+See the **[caution at the top](#node-red-homeassistant-mcp)** — this is early-alpha, vibe-coded
+software provided with **no warranty and no liability** (`LICENSE`), and you run it at your own risk.
+
+For transparency on what "untested" means here: the code was written following a test-driven plan
+and ships with a `pytest` suite (mocked Admin API) plus an end-to-end smoke test against a
+throwaway Node-RED. That is **not** the same as being battle-tested — it has **not** been validated
+across real-world setups or in production, edge cases are largely unexplored, and breaking changes
+should be expected. Keep backups of your flows and review the code before pointing it at anything
+you care about.
 
 ## Tools
 
