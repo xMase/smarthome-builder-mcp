@@ -214,7 +214,11 @@ async def call_service(ha_client, settings, domain, service,
             "hint": "re-call with confirm=true to execute.",
         }
 
-    changed = await ha_client.call_service(domain, service, body)
+    try:
+        changed = await ha_client.call_service(domain, service, body)
+    except httpx.HTTPStatusError as e:
+        detail = (e.response.text or "").strip()
+        raise NRError(f"HA rejected {called} ({e.response.status_code}): {detail[:200]}") from e
     trimmed = [{"entity_id": c.get("entity_id"), "state": c.get("state")} for c in changed]
     out = {
         "ok": True,
