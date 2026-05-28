@@ -266,3 +266,22 @@ def test_effective_policy_source():
     cfg = ha.effective_policy(Settings(ha_confirm_services="lock.unlock"))
     assert cfg["confirm_source"] == "configured"
     assert cfg["confirm"] == ["lock.unlock"]
+
+
+# --- ha_call_service: HARestClient.call_service ---
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_harestclient_call_service_posts_body_and_returns_changed():
+    import json as _json
+    route = respx.post("http://ha.local/api/services/light/turn_on").mock(
+        return_value=httpx.Response(
+            200, json=[{"entity_id": "light.k", "state": "on", "attributes": {"brightness": 5}}]))
+    c = ha.HARestClient(Settings(ha_url="http://ha.local", ha_token="t"))
+    try:
+        out = await c.call_service("light", "turn_on", {"entity_id": "light.k"})
+    finally:
+        await c.close()
+    assert route.called
+    assert _json.loads(route.calls.last.request.content) == {"entity_id": "light.k"}
+    assert out == [{"entity_id": "light.k", "state": "on", "attributes": {"brightness": 5}}]
