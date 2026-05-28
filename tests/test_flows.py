@@ -306,3 +306,35 @@ def test_resolve_tab_ambiguous_and_missing():
         _resolve_tab(flows_list, "solar")      # ambiguous
     with pytest.raises(NRNotFoundError):
         _resolve_tab(flows_list, "nope")       # missing
+
+
+# --- nr_export_flow: export_flow ---
+
+@pytest.mark.asyncio
+async def test_export_flow_builds_importable_array(fake_client):
+    res = await flows.export_flow(fake_client, "Heating")
+    assert res["flow"][0]["id"] == "tab1"                 # tab first
+    ids = {n["id"] for n in res["flow"]}
+    assert ids == {"tab1", "g1", "n1", "n2", "n3"}
+    assert res["tab_id"] == "tab1"
+    assert res["node_count"] == 3
+    assert res["group_count"] == 1
+    assert len(res["flow"]) == 5
+
+@pytest.mark.asyncio
+async def test_export_flow_excludes_global_config_nodes(fake_client):
+    res = await flows.export_flow(fake_client, "tab1")     # resolve by id too
+    ids = {n["id"] for n in res["flow"]}
+    assert "srv1" not in ids                               # z="" config node not bundled
+
+@pytest.mark.asyncio
+async def test_export_flow_is_verbatim(fake_client):
+    res = await flows.export_flow(fake_client, "Heating")
+    n3 = next(n for n in res["flow"] if n["id"] == "n3")
+    assert n3["domain"] == "switch" and n3["service"] == "turn_on"
+    assert n3["entityId"] == "switch.boiler"
+
+@pytest.mark.asyncio
+async def test_export_flow_unknown_raises(fake_client):
+    with pytest.raises(NRNotFoundError):
+        await flows.export_flow(fake_client, "does-not-exist")
