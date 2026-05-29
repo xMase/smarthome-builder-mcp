@@ -34,7 +34,11 @@ delegates via `_wrap`. No HTTP/WS logic in the server — consistent with the re
 ```
 ha_ws_command(command, params={}, confirm=False)
    └─ ha_ws.run_command(settings, command, params, confirm, connect=None)
-        ├─ _classify(command) -> "read" | "write"
+        ├─ command == "call_service" -> _service_tier(domain, service, settings)
+        │     ├─ blocked -> HAWsError (confirm cannot override)
+        │     ├─ confirm & !confirm-flag -> preview
+        │     └─ direct / confirmed     -> execute
+        ├─ _classify(command) -> "read" | "write"   (non-service commands)
         ├─ read               -> execute immediately
         ├─ write & blocklist  -> HAWsError (confirm cannot override)
         ├─ write & !confirm    -> return preview {would_send, requires_confirm}
@@ -69,9 +73,20 @@ recognized as a read. An unknown command falls into the prudent path.
 
 Mirrors `ha_call_service`:
 
+- **Shared service floor (closes a bypass).** HA lets you invoke any service over the
+  WS API via `{"type": "call_service", "domain": ..., "service": ...}`. Left unguarded,
+  `ha_ws_command` would route *around* the `CATASTROPHIC_FLOOR` / confirm tiers that
+  protect `ha_call_service`. So when `command == "call_service"`, `run_command`
+  extracts `domain`/`service` from `params` and runs them through the **same**
+  `_service_tier(domain, service, settings)` from `ha.py` (reusing `CATASTROPHIC_FLOOR`
+  and `DEFAULT_CONFIRM`, no duplication): `blocked` → `HAWsError` (confirm cannot
+  override), `confirm` → preview unless `confirm=true`, `direct` → execute. This makes
+  a catastrophic call identically blocked whether issued via REST or WS.
 - **block-list** `HA_WS_BLOCK_COMMANDS` (env, additive) → `HAWsError`; `confirm=true`
-  does **not** override it. **Default floor is empty** (no invented "catastrophic" WS
-  commands; the mechanism exists and is documented).
+  does **not** override it. This is for blocking non-service WS *command types* (e.g.
+  a specific `config/...` command); the service floor above handles `call_service`.
+  **Default WS-command floor is empty** (no invented "catastrophic" WS commands; the
+  mechanism exists and is documented).
 - preview without confirm:
   `{"preview": true, "would_send": {"type": command, **params}, "requires_confirm": true,
     "hint": "re-call with confirm=true to execute."}`.
@@ -98,6 +113,9 @@ other `ha_ws` tests already do. Cases:
 4. command in block-list raises `HAWsError` even with `confirm=true`.
 5. HA `success: false` frame → `HAWsError`.
 6. unknown command defaults to write (preview without confirm).
+7. `call_service` with a `CATASTROPHIC_FLOOR` service (e.g. `homeassistant.stop`)
+   raises `HAWsError` even with `confirm=true` — the WS path does not bypass the floor.
+8. `call_service` with a `DEFAULT_CONFIRM` service returns a preview without confirm.
 
 ## Tool-count sync
 
