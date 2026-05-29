@@ -180,3 +180,9 @@ async def test_nodered_generic_failure_raises():
     with pytest.raises(HAWsError, match="config_entries/get failed"):
         await ha_ws.check_nodered_integration(_settings(), connect=_connect_factory(conn))
     assert conn.closed is True
+
+
+def test_settings_have_ws_policy_defaults():
+    s = Settings(ha_url="http://ha:8123", ha_token="tok")
+    assert s.ha_ws_block_commands == ""
+    assert s.ha_ws_read_commands is None
