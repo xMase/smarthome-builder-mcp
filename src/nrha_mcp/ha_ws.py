@@ -205,6 +205,14 @@ async def _execute(settings, command: str, params: dict, connect) -> dict:
         await conn.close()
 
 
+def effective_policy(settings) -> dict:
+    """Resolved WS-command policy for observability (nr_diagnostics)."""
+    return {
+        "read_commands": sorted(_read_commands(settings)),
+        "blocked_commands": sorted(_ws_block_set(settings)),
+    }
+
+
 async def run_command(settings, command: str, params: dict | None = None,
                       *, confirm: bool = False, connect=None) -> dict:
     """Send an arbitrary HA WebSocket command. Reads run immediately; writes return a

@@ -300,3 +300,13 @@ async def test_call_service_direct_executes():
     assert res["ok"] is True
     assert {"id": 1, "type": "call_service",
             "domain": "light", "service": "turn_on"} in conn.sent
+
+
+def test_ws_effective_policy_reports_read_and_block():
+    s = Settings(ha_url="http://ha:8123", ha_token="tok",
+                 ha_ws_block_commands="config/core/update",
+                 ha_ws_read_commands="my/custom_read")
+    pol = ha_ws.effective_policy(s)
+    assert "my/custom_read" in pol["read_commands"]
+    assert "recorder/statistics_during_period" in pol["read_commands"]  # default kept
+    assert pol["blocked_commands"] == ["config/core/update"]
