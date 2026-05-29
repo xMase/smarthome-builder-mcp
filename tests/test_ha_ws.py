@@ -213,3 +213,43 @@ async def test_run_command_read_failure_raises():
         await ha_ws.run_command(
             _settings(), "config/entity_registry/list", connect=_connect_factory(conn))
     assert conn.closed is True
+
+
+@pytest.mark.asyncio
+async def test_run_command_write_without_confirm_previews():
+    # auth frame present but must NOT be consumed: nothing is sent past connect
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    res = await ha_ws.run_command(
+        _settings(), "config/entity_registry/remove",
+        params={"entity_id": "button.x"}, connect=_connect_factory(conn))
+    assert res["preview"] is True
+    assert res["requires_confirm"] is True
+    assert res["would_send"] == {"type": "config/entity_registry/remove",
+                                 "entity_id": "button.x"}
+    assert conn.sent == []          # nothing sent
+    assert conn.closed is False     # connection never opened
+
+
+@pytest.mark.asyncio
+async def test_run_command_write_with_confirm_executes():
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              {"id": 1, "type": "result", "success": True, "result": None}]
+    conn = FakeHAWsConn(frames)
+    res = await ha_ws.run_command(
+        _settings(), "config/entity_registry/remove",
+        params={"entity_id": "button.x"}, confirm=True, connect=_connect_factory(conn))
+    assert res["ok"] is True
+    assert {"id": 1, "type": "config/entity_registry/remove",
+            "entity_id": "button.x"} in conn.sent
+    assert conn.closed is True
+
+
+@pytest.mark.asyncio
+async def test_run_command_blocklisted_raises_even_with_confirm():
+    settings = Settings(ha_url="http://ha:8123", ha_token="tok",
+                        ha_ws_block_commands="config/core/update")
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    with pytest.raises(HAWsError, match="HA_WS_BLOCK_COMMANDS"):
+        await ha_ws.run_command(
+            settings, "config/core/update", confirm=True, connect=_connect_factory(conn))
+    assert conn.sent == []

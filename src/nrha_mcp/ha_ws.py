@@ -212,6 +212,10 @@ async def run_command(settings, command: str, params: dict | None = None,
     params = dict(params or {})
     if _is_read(command, settings):
         return await _execute(settings, command, params, connect)
+    if command in _ws_block_set(settings):
+        raise HAWsError(
+            f"{command} is in HA_WS_BLOCK_COMMANDS and cannot be executed; "
+            "confirm=true does not override it.")
     if not confirm:
         return _preview(command, params)
     return await _execute(settings, command, params, connect)
