@@ -186,3 +186,30 @@ def test_settings_have_ws_policy_defaults():
     s = Settings(ha_url="http://ha:8123", ha_token="tok")
     assert s.ha_ws_block_commands == ""
     assert s.ha_ws_read_commands is None
+
+
+@pytest.mark.asyncio
+async def test_run_command_read_executes_without_confirm():
+    # a "/list" command is a read -> runs immediately, no confirm needed
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              {"id": 1, "type": "result", "success": True,
+               "result": [{"entity_id": "button.x"}]}]
+    conn = FakeHAWsConn(frames)
+    res = await ha_ws.run_command(
+        _settings(), "config/entity_registry/list", connect=_connect_factory(conn))
+    assert res["ok"] is True
+    assert res["command"] == "config/entity_registry/list"
+    assert res["result"] == [{"entity_id": "button.x"}]
+    assert {"id": 1, "type": "config/entity_registry/list"} in conn.sent
+    assert conn.closed is True
+
+
+@pytest.mark.asyncio
+async def test_run_command_read_failure_raises():
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              {"id": 1, "type": "result", "success": False, "error": {"code": "boom"}}]
+    conn = FakeHAWsConn(frames)
+    with pytest.raises(HAWsError, match="failed"):
+        await ha_ws.run_command(
+            _settings(), "config/entity_registry/list", connect=_connect_factory(conn))
+    assert conn.closed is True
