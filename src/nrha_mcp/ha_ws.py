@@ -210,6 +210,20 @@ async def run_command(settings, command: str, params: dict | None = None,
     """Send an arbitrary HA WebSocket command. Reads run immediately; writes return a
     preview unless confirm=true. call_service obeys the shared catastrophic floor."""
     params = dict(params or {})
+    # call_service over WS must obey the SAME floor as ha_call_service (no bypass).
+    if command == "call_service":
+        from .ha import _service_tier  # reuse CATASTROPHIC_FLOOR / DEFAULT_CONFIRM
+        domain, service = params.get("domain"), params.get("service")
+        if not domain or not service:
+            raise HAWsError("call_service requires 'domain' and 'service' in params.")
+        tier = _service_tier(domain, service, settings)
+        if tier == "blocked":
+            raise HAWsError(
+                f"{domain}.{service} is in the catastrophic block list and cannot be "
+                "executed; confirm=true does not override it.")
+        if tier == "confirm" and not confirm:
+            return _preview(command, params)
+        return await _execute(settings, command, params, connect)
     if _is_read(command, settings):
         return await _execute(settings, command, params, connect)
     if command in _ws_block_set(settings):

@@ -253,3 +253,50 @@ async def test_run_command_blocklisted_raises_even_with_confirm():
         await ha_ws.run_command(
             settings, "config/core/update", confirm=True, connect=_connect_factory(conn))
     assert conn.sent == []
+
+
+@pytest.mark.asyncio
+async def test_call_service_catastrophic_blocked_even_with_confirm():
+    # homeassistant.stop is in ha.py CATASTROPHIC_FLOOR; WS must not bypass it
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    with pytest.raises(HAWsError, match="catastrophic"):
+        await ha_ws.run_command(
+            _settings(), "call_service",
+            params={"domain": "homeassistant", "service": "stop"},
+            confirm=True, connect=_connect_factory(conn))
+    assert conn.sent == []
+
+
+@pytest.mark.asyncio
+async def test_call_service_sensitive_previews_without_confirm():
+    # lock.unlock is in ha.py DEFAULT_CONFIRM -> preview unless confirm
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    res = await ha_ws.run_command(
+        _settings(), "call_service",
+        params={"domain": "lock", "service": "unlock", "service_data": {"entity_id": "lock.x"}},
+        connect=_connect_factory(conn))
+    assert res["preview"] is True
+    assert conn.sent == []
+
+
+@pytest.mark.asyncio
+async def test_call_service_missing_domain_raises():
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    with pytest.raises(HAWsError, match="domain"):
+        await ha_ws.run_command(
+            _settings(), "call_service", params={"service": "turn_on"},
+            confirm=True, connect=_connect_factory(conn))
+
+
+@pytest.mark.asyncio
+async def test_call_service_direct_executes():
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              {"id": 1, "type": "result", "success": True, "result": {"context": {}}}]
+    conn = FakeHAWsConn(frames)
+    res = await ha_ws.run_command(
+        _settings(), "call_service",
+        params={"domain": "light", "service": "turn_on"},
+        connect=_connect_factory(conn))   # direct tier, no confirm needed
+    assert res["ok"] is True
+    assert {"id": 1, "type": "call_service",
+            "domain": "light", "service": "turn_on"} in conn.sent
