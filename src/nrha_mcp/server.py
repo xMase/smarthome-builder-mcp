@@ -428,6 +428,24 @@ async def ha_check_nodered_integration() -> str:
     return await _wrap(lambda: ha_ws.check_nodered_integration(settings))
 
 
+@mcp.tool()
+async def ha_ws_command(command: str, params: dict | None = None,
+                        confirm: bool = False) -> str:
+    """Send a raw Home Assistant WebSocket command (escape hatch for capabilities not
+    covered by other ha_* tools — e.g. registry edits like config/entity_registry/remove
+    or config/entity_registry/update). Requires HA_URL + HA_TOKEN.
+
+    `command` is the WS message "type"; `params` are merged into the message (e.g.
+    {"entity_id": "..."}). Reads (types ending in /list or /get, plus get_states /
+    get_config / get_services / render_template / recorder statistics) run immediately.
+    Everything else is a WRITE: it returns a preview and executes only when confirm=true.
+    A `call_service` command obeys the same catastrophic/sensitive floor as
+    ha_call_service — it cannot bypass it. See nr_diagnostics -> ha_ws_policy."""
+    if not settings.ha_url or not settings.ha_token:
+        return _err("HA ha_ws_command needs HA_URL and HA_TOKEN to be set.")
+    return await _wrap(lambda: ha_ws.run_command(settings, command, params, confirm=confirm))
+
+
 def main():
     """Console-script entry point."""
     transport = "streamable-http" if settings.mcp_transport == "http" else "stdio"
