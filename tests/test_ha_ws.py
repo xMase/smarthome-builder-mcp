@@ -310,3 +310,15 @@ def test_ws_effective_policy_reports_read_and_block():
     assert "my/custom_read" in pol["read_commands"]
     assert "recorder/statistics_during_period" in pol["read_commands"]  # default kept
     assert pol["blocked_commands"] == ["config/core/update"]
+
+
+@pytest.mark.asyncio
+async def test_run_command_blocklist_beats_read_classification():
+    # a command that LOOKS like a read but is explicitly blocked must be refused
+    settings = Settings(ha_url="http://ha:8123", ha_token="tok",
+                        ha_ws_block_commands="config/secret_registry/list")
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    with pytest.raises(HAWsError, match="HA_WS_BLOCK_COMMANDS"):
+        await ha_ws.run_command(
+            settings, "config/secret_registry/list", connect=_connect_factory(conn))
+    assert conn.sent == []
