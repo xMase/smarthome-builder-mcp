@@ -1,0 +1,50 @@
+# Development stack — live source, no image rebuild on every edit.
+#
+#     docker compose -f docker-compose.dev.yml up -d        # start (builds once)
+#     # ...edit files under ./src...
+#     docker compose -f docker-compose.dev.yml restart nrha-mcp   # reload code
+#     docker compose -f docker-compose.dev.yml logs -f nrha-mcp   # tail logs
+#     docker compose -f docker-compose.dev.yml down              # tear down
+#
+# Differences vs docker-compose.yml (the prod-ish full stack):
+#   - separate project name (`nrha-dev`) + volume, so it coexists with the prod stack;
+#   - ./src is bind-mounted and the package is installed editable (`pip install -e .`),
+#     so a `restart` picks up code changes WITHOUT rebuilding the image;
+#   - no throwaway Node-RED: both HA and Node-RED come from your ./.env (real targets);
+#   - binds the same host port your `nrha` MCP client uses (MCP_HTTP_PORT, default 8090),
+#     so the dev server IS your nrha endpoint with no client change. To run it ALONGSIDE
+#     the prod stack instead, give it a free port: MCP_HTTP_PORT_DEV=8091 docker compose ...
+name: nrha-dev
+
+services:
+  nrha-mcp:
+    build: .
+    image: node-red-homeassistant-mcp:dev
+    # Your tunables (HA_URL/HA_TOKEN, NR_URL, NR_AUTH/NR_*, DEPLOY_MODE, ...) come from .env.
+    env_file:
+      - .env
+    environment:
+      # Container invariants — forced regardless of .env (environment wins over env_file):
+      MCP_TRANSPORT: "http"          # this stack runs the HTTP service
+      MCP_HTTP_HOST: "0.0.0.0"       # MUST bind all interfaces inside the container
+      BACKUP_DIR: "/data/backups"    # persist backups on the mounted volume
+      # NR_URL and HA_URL are taken from .env as-is (real targets) — not overridden here.
+    # Live source: bind-mount ./src and reinstall editable so edits land on `restart`.
+    # --no-deps keeps it fast (deps are already baked into the image).
+    command:
+      - sh
+      - -c
+      - pip install -e . --no-deps -q && exec node-red-homeassistant-mcp
+    volumes:
+      - ./src:/app/src
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - nrha_backups_dev:/data
+    # Publish on the port your nrha client expects (default 8090). Override with
+    # MCP_HTTP_PORT_DEV to coexist with the prod stack on a different host port.
+    ports:
+      - "${MCP_HTTP_PORT_DEV:-${MCP_HTTP_PORT:-8090}}:${MCP_HTTP_PORT:-8090}"
+    # Dev: don't auto-restart, so crashes surface instead of looping silently.
+    restart: "no"
+
+volumes:
+  nrha_backups_dev:
