@@ -83,6 +83,7 @@ class FakeHAClient:
         return list(self._services)
 
     async def get_history(self, entity_id, start_iso, end_iso=None):
+        self.calls.append(("get_history", entity_id, start_iso, end_iso))
         return [list(self._history)]
 
     async def call_service(self, domain, service, body):
@@ -221,6 +222,29 @@ async def test_get_entity_history_empty_has_note():
     assert res["points"] == []
     assert res["first"] is None
     assert "note" in res
+
+
+@pytest.mark.asyncio
+async def test_get_entity_history_passes_explicit_end_time_now():
+    # Regression: without an explicit end_time, HA's /api/history/period/<start>
+    # defaults end to start+24h, so hours>24 silently drops the most recent
+    # (hours-24)h. The tool must pass end_time=now and span the full window.
+    from datetime import datetime, timezone, timedelta
+
+    fake = FakeHAClient()
+    before = datetime.now(timezone.utc)
+    await ha.get_entity_history(fake, "sensor.x", hours=60)
+    after = datetime.now(timezone.utc)
+
+    _, _, start_iso, end_iso = fake.calls[-1]
+    assert end_iso is not None, "end_time must be passed explicitly (else HA caps at start+24h)"
+
+    start = datetime.fromisoformat(start_iso)
+    end = datetime.fromisoformat(end_iso)
+    # end is 'now'
+    assert before <= end <= after
+    # window spans the requested hours, not a fixed 24h
+    assert abs((end - start) - timedelta(hours=60)) < timedelta(seconds=5)
 
 
 @pytest.mark.asyncio

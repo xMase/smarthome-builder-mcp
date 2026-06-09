@@ -269,8 +269,11 @@ _RETENTION_NOTE = (
 
 async def get_entity_history(ha_client, entity_id: str, hours: int = 24, max_points: int = 200) -> dict:
     """Recent state-change history for one entity over the last `hours`."""
-    start = datetime.now(timezone.utc) - timedelta(hours=hours)
-    data = await ha_client.get_history(entity_id, start.isoformat())
+    # end_time must be explicit: HA's /api/history/period/<start> defaults the end to
+    # start+24h, which would silently drop the most recent (hours-24)h for hours>24.
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(hours=hours)
+    data = await ha_client.get_history(entity_id, start.isoformat(), now.isoformat())
     series = data[0] if data else []
     points = [{"state": p.get("state"),
                "last_changed": p.get("last_changed") or p.get("last_updated")} for p in series]
