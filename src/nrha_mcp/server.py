@@ -14,15 +14,22 @@ client = NRClient(settings)
 store = BackupStore(settings.backup_dir)
 
 HA_AUTHORING_GUIDANCE = (
-    "When authoring Node-RED flows that use Home Assistant "
-    "(node-red-contrib-home-assistant-websocket) nodes: "
-    "(1) use ha_search_entities to resolve the correct entity_id; "
-    "(2) reuse an existing source node when one already provides the data "
-    "(e.g. an existing poll-state for a sensor) instead of adding a new one; "
-    "(3) to build a NEW HA node, first nr_search_nodes for an existing node of the "
-    "same type and clone its schema; "
-    "(4) avoid deprecated fields like state_type/stateType — use outputProperties; "
-    "(5) get the HA server config id via ha_get_server_config."
+    "Authoring Node-RED + Home Assistant "
+    "(node-red-contrib-home-assistant-websocket) flows.\n\n"
+    "Nodes: resolve entity_id via ha_search_entities; reuse an existing source node "
+    "(e.g. a poll-state) before adding one; to add a new HA node, clone the CURRENT "
+    "schema of a same-type node via nr_search_nodes rather than emitting fields from "
+    "memory — training-data schemas are often stale (e.g. the deprecated "
+    "state_type/stateType; use outputProperties instead). Validate new nodes with "
+    "nr_validate_flow before deploying. Server config id from ha_get_server_config.\n\n"
+    "Layout: left→right by data flow; columns ~180px (x), rows ~80px (y), every x/y "
+    "on a 20px grid, no overlaps. Group related nodes (one automation, or all nodes "
+    "for an entity) in a type:'group' node: descriptive name, style:{label:true}, "
+    "member ids in 'nodes', g=<groupId> on each member (both must agree), x/y/w/h "
+    "bounding the members.\n\n"
+    "Mutating flows is confirm-gated + backup-first: tools preview, then re-call with "
+    "confirm=true. To change HA itself (entity-registry edits, etc.) use ha_ws_command "
+    "— don't build throwaway nodes for it."
 )
 
 mcp = FastMCP(
@@ -72,22 +79,20 @@ async def nr_get_flow(name_or_id: str, fields: list[str] | None = None) -> str:
 async def nr_export_flow(name_or_id: str) -> str:
     """Export one tab as an import-ready Node-RED flow array.
 
-    Returns {flow, tab_id, node_count, group_count} where `flow` is the flat
-    [tab, ...groups, ...nodes] array you can paste into Node-RED's Import dialog or
-    write to a .json file. Full fidelity (no field filtering). Does NOT bundle subflow
-    definitions or global config nodes the tab references — use nr_backup_flow for a
-    complete all-flows snapshot."""
+    Returns {flow, tab_id, node_count, group_count}; `flow` is the flat
+    [tab, ...groups, ...nodes] array to paste into Node-RED's Import dialog. Full
+    fidelity. Does NOT bundle subflow definitions or global config nodes the tab
+    references — use nr_backup_flow for a complete all-flows snapshot."""
     return await _wrap(lambda: flows.export_flow(client, name_or_id))
 
 
 @mcp.tool()
 async def nr_get_subflow(name_or_id: str) -> str:
-    """Resolve a subflow by name, definition id, or instance id. Returns the
-    definition, its inputs/outputs/status resolved to the internal nodes that feed
-    each port (with output labels), the internal nodes (annotated with where they
-    actually wire, including subflow output ports), pointers to nested subflows, and
-    every instance with which outputs it wires. Use this for subflows; nr_get_flow
-    handles tabs only."""
+    """Resolve a subflow by name, definition id, or instance id. Returns the definition;
+    its inputs/outputs/status resolved to the internal nodes feeding each port (with
+    labels); the internal nodes (annotated with where they wire, incl. output ports);
+    nested-subflow pointers; and every instance with its output wiring. Use for subflows;
+    nr_get_flow handles tabs only."""
     return await _wrap(lambda: flows.get_subflow(client, name_or_id))
 
 
@@ -132,11 +137,10 @@ async def nr_capture_debug(
 ) -> str:
     """Capture live debug/status messages from the Node-RED /comms WebSocket.
 
-    Subscribes first, then (optionally) triggers `inject_node_id`, then collects
-    messages for `window_ms`. Use this to verify a flow's output deterministically:
-    debug-node output is NOT in flow context, so the context tools cannot see it.
-    Without `inject_node_id` it passively listens for the window. `topics` selects
-    channels: "debug", "status", "notification" (default ["debug", "status"])."""
+    Subscribes, optionally triggers `inject_node_id`, then collects for `window_ms`.
+    Use it to verify a flow's output: debug-node output is NOT in flow context, so the
+    context tools can't see it. `topics` selects channels "debug"/"status"/"notification"
+    (default ["debug", "status"])."""
     return await _wrap(lambda: runtime.capture_debug(
         client,
         window_ms=window_ms,
@@ -152,11 +156,10 @@ async def nr_capture_debug(
 async def nr_get_runtime_events(window_ms: int = 2000, max_messages: int = 100) -> str:
     """Capture Node-RED runtime/system events from the /comms `notification/#` channel.
 
-    Surfaces deploy outcomes, runtime-state changes (flows started/stopped, safe
-    mode) and node/module problems (failed loads, unregistered types). Use it right
-    after a deploy to check nothing broke. It listens passively for `window_ms`, so
-    trigger the action during the window. (Does not filter by severity yet; returns
-    events by source.)"""
+    Surfaces deploy outcomes, runtime-state changes (flows started/stopped, safe mode)
+    and node/module problems (failed loads, unregistered types). Run it right after a
+    deploy to check nothing broke; it listens passively for `window_ms`, so trigger the
+    action during the window."""
     return await _wrap(lambda: runtime.get_runtime_events(
         client, window_ms=window_ms, max_messages=max_messages))
 
@@ -165,11 +168,10 @@ async def nr_get_runtime_events(window_ms: int = 2000, max_messages: int = 100) 
 async def nr_validate_flow(nodes: list[dict] | None = None) -> str:
     """Validate flow structure and report errors/warnings WITHOUT deploying.
 
-    With `nodes`: validates (current flows + those nodes) — run it before
-    nr_create_nodes/nr_safe_deploy to catch problems early (findings caused by the
-    new nodes are marked `focus`). Without `nodes`: audits the current deployed
-    flows. Checks references (wires, z/tab, group members), duplicate ids, and node
-    types; it does NOT check per-type fields."""
+    With `nodes`: validates current flows + those nodes — run before nr_create_nodes/
+    nr_safe_deploy to catch problems early (findings from the new nodes are marked
+    `focus`). Without `nodes`: audits the deployed flows. Checks references (wires,
+    z/tab, group members), duplicate ids, and node types; not per-type fields."""
     return await _wrap(lambda: validate.validate_flow(client, nodes=nodes))
 
 
@@ -194,8 +196,9 @@ async def nr_add_wire(from_id: str, output_index: int, to_id: str, confirm: bool
 
 @mcp.tool()
 async def nr_create_nodes(nodes: list[dict], confirm: bool = False, description: str | None = None) -> str:
-    """Create nodes/groups (each needs id,type and z for tab nodes). Confirm-gated, backup-first.
-    For HA nodes: clone the schema of an existing same-type node (nr_search_nodes) and prefer reusing existing source nodes; avoid deprecated fields like state_type (use outputProperties)."""
+    """Create nodes/groups (each needs id,type; tab nodes also need z). Confirm-gated,
+    backup-first. Follow the server instructions for HA-node authoring, layout, and
+    grouping (a group needs both its 'nodes' member list AND g=<groupId> on each member)."""
     return await _wrap(lambda: edit.create_nodes(client, store, settings, nodes=nodes, confirm=confirm, description=description))
 
 
@@ -357,14 +360,13 @@ async def ha_get_services(domain: str | None = None) -> str:
 async def ha_call_service(domain: str, service: str,
                           entity_id: str | list[str] | None = None,
                           data: dict | None = None, confirm: bool = False) -> str:
-    """Call a Home Assistant service (turn on/off, press buttons, nudge covers, set
-    helpers). Requires HA_URL + HA_TOKEN.
+    """Call a Home Assistant service (turn on/off, press buttons, set helpers).
+    Requires HA_URL + HA_TOKEN.
 
-    `entity_id` targets one or more entities; `data` carries extra params or non-entity
-    targets (area_id, etc.). Tiered safety: ordinary services run directly; sensitive
-    ones (e.g. lock.unlock, alarm disarm) require confirm=true and otherwise return a
-    preview; a small catastrophic set (e.g. homeassistant.restart) is always blocked.
-    Use ha_get_services to find the right domain/service/fields."""
+    `entity_id` targets entities; `data` carries extra params or non-entity targets
+    (area_id, etc.). Tiered safety: ordinary services run directly; sensitive ones
+    (lock.unlock, alarm disarm) need confirm=true (else a preview); a catastrophic set
+    (homeassistant.restart, etc.) is always blocked. Find services via ha_get_services."""
     if not settings.ha_url or not settings.ha_token:
         return _err("HA call_service needs HA_URL and HA_TOKEN to be set.")
     ha_client = ha.HARestClient(settings)
@@ -431,16 +433,13 @@ async def ha_check_nodered_integration() -> str:
 @mcp.tool()
 async def ha_ws_command(command: str, params: dict | None = None,
                         confirm: bool = False) -> str:
-    """Send a raw Home Assistant WebSocket command (escape hatch for capabilities not
-    covered by other ha_* tools — e.g. registry edits like config/entity_registry/remove
-    or config/entity_registry/update). Requires HA_URL + HA_TOKEN.
+    """Send a raw HA WebSocket command — escape hatch for capabilities no other ha_* tool
+    covers (e.g. config/entity_registry/remove|update). Requires HA_URL + HA_TOKEN.
 
-    `command` is the WS message "type"; `params` are merged into the message (e.g.
-    {"entity_id": "..."}). Reads (types ending in /list or /get, plus get_states /
-    get_config / get_services / render_template / recorder statistics) run immediately.
-    Everything else is a WRITE: it returns a preview and executes only when confirm=true.
-    A `call_service` command obeys the same catastrophic/sensitive floor as
-    ha_call_service — it cannot bypass it. See nr_diagnostics -> ha_ws_policy."""
+    `command` is the WS "type"; `params` merge into the message. Reads (/list, /get,
+    get_states, render_template, recorder stats) run immediately; other commands are
+    writes — preview unless confirm=true. A `call_service` command obeys the same safety
+    floor as ha_call_service (cannot be bypassed)."""
     if not settings.ha_url or not settings.ha_token:
         return _err("HA ha_ws_command needs HA_URL and HA_TOKEN to be set.")
     return await _wrap(lambda: ha_ws.run_command(settings, command, params, confirm=confirm))
