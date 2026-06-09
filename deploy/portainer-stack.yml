@@ -1,9 +1,16 @@
 # Portainer: Stacks -> Add stack -> Web editor -> paste this -> Deploy.
-# The image `node-red-homeassistant-mcp:local` must exist on the Docker host
-# (build it there first:  docker build -t node-red-homeassistant-mcp:local .).
+#
+# Pulls the published multi-arch image from GHCR (linux/amd64 + linux/arm64) —
+# no build on the host. Pin a release with the NRHA_VERSION env var on the stack
+# (e.g. NRHA_VERSION=0.1.0); defaults to `latest`.
+#
+# The GHCR package is private by default: add the registry in Portainer
+# (Registries -> add ghcr.io with a GitHub PAT that has read:packages), or run
+# `docker login ghcr.io` on the host, before deploying.
 services:
   nrha-mcp:
-    image: node-red-homeassistant-mcp:local
+    image: "ghcr.io/xmase/node-red-homeassistant-mcp:${NRHA_VERSION:-latest}"
+    pull_policy: always              # re-pull on redeploy so a new tag is picked up
     environment:
       NR_URL: "http://nodered:1880"   # point at your own Node-RED to skip the test one
       NR_TOKEN: ""
