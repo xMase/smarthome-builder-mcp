@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     ha_block_services: str = ""            # additive to the catastrophic floor
     ha_confirm_services: str | None = None  # override-with-default: None=default, ""=gate nothing
 
+    # Home Assistant WebSocket command safety (ha_ws_command)
+    ha_ws_block_commands: str = ""            # additive block-list of WS command types
+    ha_ws_read_commands: str | None = None    # additive to the read allowlist (None=just defaults)
+
     # Transport
     mcp_transport: Literal["stdio", "http"] = "stdio"
     mcp_http_host: str = "0.0.0.0"

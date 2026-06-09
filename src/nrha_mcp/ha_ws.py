@@ -151,3 +151,93 @@ async def check_nodered_integration(settings, *, connect=None) -> dict:
     else:
         note = "Integration present and loaded; Node-RED can publish entities to HA."
     return {"installed": installed, "entries": out_entries, "note": note}
+
+
+# --- Generic WS command (ha_ws_command) ----------------------------------
+
+# Commands recognized as read-only (execute without confirm). Anything not here
+# and not ending in /list or /get is treated as a write (preview -> confirm).
+READ_COMMANDS = {
+    "get_states", "get_config", "get_services",
+    "render_template", "recorder/statistics_during_period",
+}
+
+
+def _split_csv(raw: str) -> set[str]:
+    return {t.strip() for t in (raw or "").split(",") if t.strip()}
+
+
+def _read_commands(settings) -> set[str]:
+    return READ_COMMANDS | _split_csv(settings.ha_ws_read_commands or "")
+
+
+def _is_read(command: str, settings) -> bool:
+    if command.endswith("/list") or command.endswith("/get"):
+        return True
+    return command in _read_commands(settings)
+
+
+def _ws_block_set(settings) -> set[str]:
+    return _split_csv(settings.ha_ws_block_commands)
+
+
+def _preview(command: str, params: dict) -> dict:
+    return {
+        "preview": True,
+        "would_send": {"type": command, **params},
+        "requires_confirm": True,
+        "hint": "re-call with confirm=true to execute.",
+    }
+
+
+async def _execute(settings, command: str, params: dict, connect) -> dict:
+    conn = await (connect or _default_connect)(settings)
+    try:
+        await _auth(conn, settings.ha_token)
+        await conn.send({"id": 1, "type": command, **params})
+        while True:
+            msg = await conn.recv()
+            if msg.get("id") == 1 and msg.get("type") == "result":
+                if not msg.get("success"):
+                    raise HAWsError(f"{command} failed: {msg.get('error')}")
+                return {"ok": True, "command": command, "result": msg.get("result")}
+    finally:
+        await conn.close()
+
+
+def effective_policy(settings) -> dict:
+    """Resolved WS-command policy for observability (nr_diagnostics)."""
+    return {
+        "read_commands": sorted(_read_commands(settings)),
+        "blocked_commands": sorted(_ws_block_set(settings)),
+    }
+
+
+async def run_command(settings, command: str, params: dict | None = None,
+                      *, confirm: bool = False, connect=None) -> dict:
+    """Send an arbitrary HA WebSocket command. Reads run immediately; writes return a
+    preview unless confirm=true. call_service obeys the shared catastrophic floor."""
+    params = dict(params or {})
+    # call_service over WS must obey the SAME floor as ha_call_service (no bypass).
+    if command == "call_service":
+        from .ha import _service_tier  # reuse CATASTROPHIC_FLOOR / DEFAULT_CONFIRM
+        domain, service = params.get("domain"), params.get("service")
+        if not domain or not service:
+            raise HAWsError("call_service requires 'domain' and 'service' in params.")
+        tier = _service_tier(domain, service, settings)
+        if tier == "blocked":
+            raise HAWsError(
+                f"{domain}.{service} is in the catastrophic block list and cannot be "
+                "executed; confirm=true does not override it.")
+        if tier == "confirm" and not confirm:
+            return _preview(command, params)
+        return await _execute(settings, command, params, connect)
+    if command in _ws_block_set(settings):
+        raise HAWsError(
+            f"{command} is in HA_WS_BLOCK_COMMANDS and cannot be executed; "
+            "confirm=true does not override it.")
+    if _is_read(command, settings):
+        return await _execute(settings, command, params, connect)
+    if not confirm:
+        return _preview(command, params)
+    return await _execute(settings, command, params, connect)
