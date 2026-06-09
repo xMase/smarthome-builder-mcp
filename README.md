@@ -41,7 +41,7 @@ you care about.
 
 ## Tools
 
-39 MCP tools, grouped:
+40 MCP tools, grouped:
 
 | Group | Tools |
 |---|---|
@@ -51,7 +51,7 @@ you care about.
 | **Backups** | `nr_backup_flow`, `nr_list_backups`, `nr_restore_backup`, `nr_diff` (backup vs current, or backup vs backup) |
 | **Modules & testing** | `nr_get_installed_modules`, `nr_install_module`, `nr_inject` |
 | **Home Assistant** (read) | `ha_search_entities` (live entity lookup by id/name), `ha_get_state` (current state + attributes), `ha_get_services` (discover domains/services for authoring), `ha_get_entity_history`, `ha_get_entity_statistics`, `ha_list_ha_nodes`, `ha_get_server_config`, `ha_check_nodered_integration` |
-| **Home Assistant** (act) | `ha_call_service` — call any HA service (turn on/off, press buttons, nudge covers, set helpers) with a tiered safety gate (see below) |
+| **Home Assistant** (act) | `ha_call_service` — call any HA service (turn on/off, press buttons, nudge covers, set helpers) with a tiered safety gate (see below); `ha_ws_command` — send a raw HA WebSocket command (e.g. entity-registry edits); reads run immediately, writes need `confirm=true`; a `call_service` command obeys the shared service floor |
 
 ## How the safety model works
 
@@ -96,6 +96,8 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 | `HA_TOKEN` | — | Long-lived HA access token (Profile → Long-Lived Access Tokens) |
 | `HA_BLOCK_SERVICES` | — | Comma-separated `domain.service` / `domain.*` entries that `ha_call_service` will always refuse, in addition to the built-in catastrophic floor (homeassistant.stop, homeassistant.restart, hassio.host_reboot, hassio.host_shutdown, hassio.supervisor_restart, hassio.restore_full, hassio.restore_partial, recorder.purge, recorder.purge_entities). Optional; default empty. |
 | `HA_CONFIRM_SERVICES` | default set | Comma-separated `domain.service` / `domain.*` entries that require `confirm=true`; without it the tool returns a dry-run preview. Unset = built-in default set (lock.unlock, lock.open, alarm_control_panel.alarm_disarm, alarm_control_panel.alarm_trigger, update.install). Set to empty string to gate nothing. |
+| `HA_WS_BLOCK_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` will always refuse (additive to the built-in floor; `confirm=true` cannot override). |
+| `HA_WS_READ_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` treats as read-only (additive to the built-in defaults), so they run immediately without `confirm=true`. |
 | `DEPLOY_MODE` | `propose` | `propose` (preview, write on `confirm=true`) or `auto` |
 | `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` (streamable-HTTP) |

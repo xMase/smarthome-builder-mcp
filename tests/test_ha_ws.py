@@ -180,3 +180,145 @@ async def test_nodered_generic_failure_raises():
     with pytest.raises(HAWsError, match="config_entries/get failed"):
         await ha_ws.check_nodered_integration(_settings(), connect=_connect_factory(conn))
     assert conn.closed is True
+
+
+def test_settings_have_ws_policy_defaults():
+    s = Settings(ha_url="http://ha:8123", ha_token="tok")
+    assert s.ha_ws_block_commands == ""
+    assert s.ha_ws_read_commands is None
+
+
+@pytest.mark.asyncio
+async def test_run_command_read_executes_without_confirm():
+    # a "/list" command is a read -> runs immediately, no confirm needed
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              {"id": 1, "type": "result", "success": True,
+               "result": [{"entity_id": "button.x"}]}]
+    conn = FakeHAWsConn(frames)
+    res = await ha_ws.run_command(
+        _settings(), "config/entity_registry/list", connect=_connect_factory(conn))
+    assert res["ok"] is True
+    assert res["command"] == "config/entity_registry/list"
+    assert res["result"] == [{"entity_id": "button.x"}]
+    assert {"id": 1, "type": "config/entity_registry/list"} in conn.sent
+    assert conn.closed is True
+
+
+@pytest.mark.asyncio
+async def test_run_command_read_failure_raises():
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              {"id": 1, "type": "result", "success": False, "error": {"code": "boom"}}]
+    conn = FakeHAWsConn(frames)
+    with pytest.raises(HAWsError, match="failed"):
+        await ha_ws.run_command(
+            _settings(), "config/entity_registry/list", connect=_connect_factory(conn))
+    assert conn.closed is True
+
+
+@pytest.mark.asyncio
+async def test_run_command_write_without_confirm_previews():
+    # auth frame present but must NOT be consumed: nothing is sent past connect
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    res = await ha_ws.run_command(
+        _settings(), "config/entity_registry/remove",
+        params={"entity_id": "button.x"}, connect=_connect_factory(conn))
+    assert res["preview"] is True
+    assert res["requires_confirm"] is True
+    assert res["would_send"] == {"type": "config/entity_registry/remove",
+                                 "entity_id": "button.x"}
+    assert conn.sent == []          # nothing sent
+    assert conn.closed is False     # connection never opened
+
+
+@pytest.mark.asyncio
+async def test_run_command_write_with_confirm_executes():
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              {"id": 1, "type": "result", "success": True, "result": None}]
+    conn = FakeHAWsConn(frames)
+    res = await ha_ws.run_command(
+        _settings(), "config/entity_registry/remove",
+        params={"entity_id": "button.x"}, confirm=True, connect=_connect_factory(conn))
+    assert res["ok"] is True
+    assert {"id": 1, "type": "config/entity_registry/remove",
+            "entity_id": "button.x"} in conn.sent
+    assert conn.closed is True
+
+
+@pytest.mark.asyncio
+async def test_run_command_blocklisted_raises_even_with_confirm():
+    settings = Settings(ha_url="http://ha:8123", ha_token="tok",
+                        ha_ws_block_commands="config/core/update")
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    with pytest.raises(HAWsError, match="HA_WS_BLOCK_COMMANDS"):
+        await ha_ws.run_command(
+            settings, "config/core/update", confirm=True, connect=_connect_factory(conn))
+    assert conn.sent == []
+
+
+@pytest.mark.asyncio
+async def test_call_service_catastrophic_blocked_even_with_confirm():
+    # homeassistant.stop is in ha.py CATASTROPHIC_FLOOR; WS must not bypass it
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    with pytest.raises(HAWsError, match="catastrophic"):
+        await ha_ws.run_command(
+            _settings(), "call_service",
+            params={"domain": "homeassistant", "service": "stop"},
+            confirm=True, connect=_connect_factory(conn))
+    assert conn.sent == []
+
+
+@pytest.mark.asyncio
+async def test_call_service_sensitive_previews_without_confirm():
+    # lock.unlock is in ha.py DEFAULT_CONFIRM -> preview unless confirm
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    res = await ha_ws.run_command(
+        _settings(), "call_service",
+        params={"domain": "lock", "service": "unlock", "service_data": {"entity_id": "lock.x"}},
+        connect=_connect_factory(conn))
+    assert res["preview"] is True
+    assert conn.sent == []
+
+
+@pytest.mark.asyncio
+async def test_call_service_missing_domain_raises():
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    with pytest.raises(HAWsError, match="domain"):
+        await ha_ws.run_command(
+            _settings(), "call_service", params={"service": "turn_on"},
+            confirm=True, connect=_connect_factory(conn))
+
+
+@pytest.mark.asyncio
+async def test_call_service_direct_executes():
+    frames = [{"type": "auth_required"}, {"type": "auth_ok"},
+              {"id": 1, "type": "result", "success": True, "result": {"context": {}}}]
+    conn = FakeHAWsConn(frames)
+    res = await ha_ws.run_command(
+        _settings(), "call_service",
+        params={"domain": "light", "service": "turn_on"},
+        connect=_connect_factory(conn))   # direct tier, no confirm needed
+    assert res["ok"] is True
+    assert {"id": 1, "type": "call_service",
+            "domain": "light", "service": "turn_on"} in conn.sent
+
+
+def test_ws_effective_policy_reports_read_and_block():
+    s = Settings(ha_url="http://ha:8123", ha_token="tok",
+                 ha_ws_block_commands="config/core/update",
+                 ha_ws_read_commands="my/custom_read")
+    pol = ha_ws.effective_policy(s)
+    assert "my/custom_read" in pol["read_commands"]
+    assert "recorder/statistics_during_period" in pol["read_commands"]  # default kept
+    assert pol["blocked_commands"] == ["config/core/update"]
+
+
+@pytest.mark.asyncio
+async def test_run_command_blocklist_beats_read_classification():
+    # a command that LOOKS like a read but is explicitly blocked must be refused
+    settings = Settings(ha_url="http://ha:8123", ha_token="tok",
+                        ha_ws_block_commands="config/secret_registry/list")
+    conn = FakeHAWsConn([{"type": "auth_required"}, {"type": "auth_ok"}])
+    with pytest.raises(HAWsError, match="HA_WS_BLOCK_COMMANDS"):
+        await ha_ws.run_command(
+            settings, "config/secret_registry/list", connect=_connect_factory(conn))
+    assert conn.sent == []

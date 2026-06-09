@@ -1,7 +1,7 @@
 """Read-only health snapshot of Node-RED plus the MCP's HA/config wiring."""
 
 from .client import NRError
-from . import ha
+from . import ha, ha_ws
 
 
 async def _default_ha_ping(settings) -> dict:
@@ -58,5 +58,6 @@ async def run(client, settings, *, ha_ping=None) -> dict:
             ha_block["error"] = type(e).__name__
     out["home_assistant"] = ha_block
     out["ha_call_policy"] = ha.effective_policy(settings)
+    out["ha_ws_policy"] = ha_ws.effective_policy(settings)
 
     return out
