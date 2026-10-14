@@ -4,6 +4,7 @@ import pytest
 from nrha_mcp import edit
 from nrha_mcp.backup import BackupStore
 from nrha_mcp.client import NRError, NRNotFoundError
+from tests.conftest import FakeNRClient, SAMPLE_FLOWS
 
 
 @pytest.mark.asyncio
@@ -137,3 +138,39 @@ async def test_create_tab_and_nodes_in_one_call(fake_client, settings_auto, tmp_
     flows, _ = await fake_client.get_flows()
     ids = {f["id"] for f in flows}
     assert {"tabX", "injX", "dbgX"} <= ids
+
+
+@pytest.mark.asyncio
+async def test_delete_empty_tab(settings_auto, tmp_path):
+    client = FakeNRClient(flows=SAMPLE_FLOWS + [{"id": "tab2", "type": "tab", "label": "TMP"}])
+    store = BackupStore(str(tmp_path))
+    res = await edit.delete_nodes(client, store, settings_auto, node_ids=["tab2"], confirm=True)
+    assert res["deployed"] is True
+    flows, _ = await client.get_flows()
+    assert all(f["id"] != "tab2" for f in flows)
+
+
+@pytest.mark.asyncio
+async def test_delete_tab_with_nodes_reports_count(fake_client, settings_auto, tmp_path):
+    store = BackupStore(str(tmp_path))
+    with pytest.raises(NRError, match="4 object"):   # n1, n2, n3, g1
+        await edit.delete_nodes(fake_client, store, settings_auto, node_ids=["tab1"], confirm=True)
+
+
+@pytest.mark.asyncio
+async def test_delete_tab_together_with_all_its_nodes(fake_client, settings_auto, tmp_path):
+    store = BackupStore(str(tmp_path))
+    res = await edit.delete_nodes(fake_client, store, settings_auto,
+                                  node_ids=["tab1", "n1", "n2", "n3", "g1"], confirm=True)
+    assert res["deployed"] is True
+    flows, _ = await fake_client.get_flows()
+    assert [f["id"] for f in flows] == ["srv1"]
+
+
+@pytest.mark.asyncio
+async def test_delete_tab_with_scoped_config_node_refused(settings_auto, tmp_path):
+    client = FakeNRClient(flows=[{"id": "tab2", "type": "tab", "label": "TMP"},
+                                 {"id": "cfg", "type": "server", "z": "tab2", "name": "scoped"}])
+    store = BackupStore(str(tmp_path))
+    with pytest.raises(NRError, match="1 object"):
+        await edit.delete_nodes(client, store, settings_auto, node_ids=["tab2"], confirm=True)
