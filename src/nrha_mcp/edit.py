@@ -122,10 +122,14 @@ async def delete_nodes(client, store, settings, *, node_ids, confirm=False, desc
         missing = ids - existing
         if missing:
             raise NRError(f"Nodes not found: {missing}")
+        remaining = [f for f in flows if f["id"] not in ids]
         for f in flows:
             if f["id"] in ids and f.get("type") == "tab":
-                raise NRError(f"Refusing to delete tab '{f['id']}'. Remove all nodes first.")
-        new = [copy.deepcopy(f) for f in flows if f["id"] not in ids]
+                inside = sum(1 for r in remaining if r.get("z") == f["id"])
+                if inside:
+                    raise NRError(f"Refusing to delete tab '{f['id']}': it still contains {inside} object(s). "
+                                  "Delete them first or in the same call.")
+        new = [copy.deepcopy(f) for f in remaining]
         for f in new:
             if f.get("type") == "group" and "nodes" in f:
                 f["nodes"] = [nid for nid in f["nodes"] if nid not in ids]
