@@ -145,6 +145,7 @@ async def run_smoke():
         env={
             **os.environ,
             "NR_URL": NR_URL,
+            "MCP_TRANSPORT": "stdio",  # a local .env may say http; this script drives stdio
             "DEPLOY_MODE": "propose",
             "BACKUP_DIR": BACKUP_DIR,
         },
