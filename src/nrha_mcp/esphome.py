@@ -122,7 +122,12 @@ async def _open_ingress(settings, ha_connect=None) -> tuple[str, str]:
     slug = settings.esphome_addon_slug
     conn = await (ha_connect or ha_ws._default_connect)(settings)
     try:
-        await ha_ws._auth(conn, settings.ha_token)
+        try:
+            await ha_ws._auth(conn, settings.ha_token)
+        except NRError:
+            raise
+        except Exception as e:
+            raise ESPHomeError(f"HA websocket connection lost: {type(e).__name__}: {e}") from None
         info = await _ha_result(conn, 1, {"type": "supervisor/api",
                                           "endpoint": f"/addons/{slug}/info", "method": "get"})
         if not info.get("success"):
@@ -185,7 +190,10 @@ class _DB:
 
     async def _send(self, command: str, args: dict) -> str:
         mid = str(next(self._ids))
-        await self._conn.send({"command": command, "message_id": mid, "args": args})
+        try:
+            await self._conn.send({"command": command, "message_id": mid, "args": args})
+        except Exception as e:
+            raise ESPHomeError(f"Device Builder connection lost: {type(e).__name__}: {e}") from None
         return mid
 
     async def _recv(self, timeout: float) -> dict:
