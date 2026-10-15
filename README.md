@@ -6,7 +6,8 @@
 > This software was **"vibe-coded"** (written by an AI agent under human supervision) and has
 > **not been validated in production**. It can **modify and deploy your Node-RED flows** and
 > **act on your physical Home Assistant setup** — including unlocking locks, disarming alarms,
-> and controlling devices. It may misbehave, lose data, or take unintended real-world actions.
+> and controlling devices — and it can **rewrite and flash the firmware of your ESPHome devices**.
+> It may misbehave, lose data, or take unintended real-world actions.
 >
 > It is provided **"AS IS", WITHOUT WARRANTY OF ANY KIND**. The authors accept **no liability
 > for any damage** whatsoever (see [`LICENSE`](LICENSE)). Back up your flows, review the code,
@@ -24,6 +25,8 @@ through Node-RED's Admin API — without breaking a working installation:
   until you call them again with `confirm=true`.
 - **Home-Assistant-aware** — recognizes `node-red-contrib-home-assistant-websocket` nodes and
   lists their entity/service references.
+- **ESPHome** — lists, reads, edits, validates, logs, compiles and OTA-flashes ESPHome devices
+  through the ESPHome Device Builder add-on over HA ingress (only `HA_URL` + `HA_TOKEN` needed).
 
 Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) (MIT). See `NOTICE`.
 
@@ -80,6 +83,18 @@ deploy gate above (HA service calls have no undo, so they cannot be backed up):
 - Everything else runs directly. The effective policy is reported by `nr_diagnostics`. Note: this
   gates services *at the call boundary* — a `script`/`automation` can still indirectly reach a gated
   service, so it is a guardrail against direct mistakes, not a sandbox.
+
+**ESPHome (`esphome_*`)** has its own gate too; it talks to the Device Builder add-on, not to the
+Node-RED deploy path:
+
+- **YAML writes** (`esphome_update_config`, `esphome_restore_backup`) follow `DEPLOY_MODE`: a diff
+  preview plus a `base_sha256` unless `confirm=true`. Before writing, the current file is saved to
+  `BACKUP_DIR/esphome/` and re-read; if it changed since the preview, nothing is written.
+- **Flashing** (`esphome_install`) **always** needs `confirm=true`, also with `DEPLOY_MODE=auto`. The
+  preview shows the device state and versions, and warns when an offline device would get a deferred
+  flash (it compiles now and flashes when the device comes back online).
+- `esphome_compile` needs no confirm, but it cancels queued or running jobs of the same device,
+  including the upload of an earlier `esphome_install`.
 
 ## Configuration
 
