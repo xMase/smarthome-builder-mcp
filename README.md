@@ -32,6 +32,31 @@ How it stays safe:
 
 Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) (MIT). See `NOTICE`.
 
+## What you can ask
+
+Plain requests to your AI assistant; it picks the tools and shows you a preview before any change.
+
+- *"When the hallway motion sensor triggers after sunset, turn on the hallway light for 2 minutes —
+  build it in Node-RED."* → finds the real entity ids (`ha_search_entities`), clones an existing HA
+  node as a template, adds the nodes and wires, shows the diff, deploys on `confirm=true` after a
+  backup.
+- *"Why didn't the irrigation flow run this morning?"* → reads the flow, the node configs, recent
+  runtime events and debug output, and the history of the entities involved.
+- *"Add a DS18B20 temperature sensor on GPIO4 to the garage ESP32 and flash it."* → reads the device
+  YAML, shows the diff, validates it, backs up and writes it, then flashes over the air and follows
+  the compile/upload job until "OTA successful".
+- *"Which ESPHome devices are offline or have changes that were never flashed?"* →
+  `esphome_list_devices`.
+
+## Why this and not Home Assistant's built-in MCP server
+
+Home Assistant's own **MCP Server** integration exposes the Assist API: it lets an assistant query
+and control the entities you expose. That is the right tool for "turn off the kitchen lights".
+
+This server is for **building and changing** the system around those entities: it writes and
+deploys **Node-RED flows**, edits and **flashes ESPHome firmware**, and inspects what ran and why —
+with backups, diff previews and confirmation gates on every change. The two can run side by side.
+
 ## Status
 
 **Alpha.** It runs on one Home Assistant + Node-RED installation (the author's), not across many setups,
