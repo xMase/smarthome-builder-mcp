@@ -1,17 +1,10 @@
 # node-red-homeassistant-mcp
 
-> [!CAUTION]
-> **Early alpha — largely untested. Use entirely at your own risk.**
->
-> This software was **"vibe-coded"** (written by an AI agent under human supervision) and has
-> **not been validated in production**. It can **modify and deploy your Node-RED flows** and
-> **act on your physical Home Assistant setup** — including unlocking locks, disarming alarms,
-> and controlling devices — and it can **rewrite and flash the firmware of your ESPHome devices**.
-> It may misbehave, lose data, or take unintended real-world actions.
->
-> It is provided **"AS IS", WITHOUT WARRANTY OF ANY KIND**. The authors accept **no liability
-> for any damage** whatsoever (see [`LICENSE`](LICENSE)). Back up your flows, review the code,
-> and do not point it at anything you cannot afford to break.
+> [!WARNING]
+> This server acts on real things: it **deploys Node-RED flows**, **calls Home Assistant services**
+> (locks, alarms, devices) and **flashes ESPHome firmware**. Confirmation gates and backup-first writes
+> reduce the risk; they do not remove it. Back up your setup first, and use it at your own risk
+> (MIT, no warranty — see [`LICENSE`](LICENSE)).
 
 MCP server for **Node-RED** with **Home Assistant** awareness and **safe, backup-first deploy**.
 
@@ -30,17 +23,15 @@ through Node-RED's Admin API — without breaking a working installation:
 
 Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) (MIT). See `NOTICE`.
 
-## Status & disclaimer
+## Status
 
-See the **[caution at the top](#node-red-homeassistant-mcp)** — this is early-alpha, vibe-coded
-software provided with **no warranty and no liability** (`LICENSE`), and you run it at your own risk.
+**Alpha.** It runs on one Home Assistant + Node-RED installation (the author's), not across many setups,
+and breaking changes are possible.
 
-For transparency on what "untested" means here: the code was written following a test-driven plan
-and ships with a `pytest` suite (mocked Admin API) plus an end-to-end smoke test against a
-throwaway Node-RED. That is **not** the same as being battle-tested — it has **not** been validated
-across real-world setups or in production, edge cases are largely unexplored, and breaking changes
-should be expected. Keep backups of your flows and review the code before pointing it at anything
-you care about.
+Each feature is built from a written spec and plan, test-first, and reviewed before merge. The code
+ships with a `pytest` suite (mocked Node-RED Admin API and fake Home Assistant / Device Builder
+websockets) and an end-to-end smoke test against a throwaway Node-RED. Edge cases on setups other
+than the author's are largely unexplored.
 
 ## Tools
 
@@ -221,3 +212,5 @@ uv pip install -e ".[dev]"
 MIT (see [`LICENSE`](LICENSE)). Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) by
 NXTAssist.ai (incl. its open PR #3); see [`NOTICE`](NOTICE) and
 [`THIRD-PARTY-NOTICES.txt`](THIRD-PARTY-NOTICES.txt) for attribution and the upstream MIT license.
+
+Developed with AI assistance (Claude) under human review.
