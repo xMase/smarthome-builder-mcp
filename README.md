@@ -181,7 +181,7 @@ Run it as a long-lived HTTP service (streamable-HTTP at `/mcp`).
 **Quickest — local, reads your `.env`:**
 
 ```bash
-cp .env.example .env            # then edit if you like (e.g. MCP_HTTP_PORT, DEPLOY_MODE)
+cp .env.example .env            # then set MCP_AUTH_TOKEN (required in http mode); edit others if you like
 docker compose up -d --build    # starts the MCP service + a throwaway Node-RED
 # ... connect (below), then:  docker compose down -v
 ```
