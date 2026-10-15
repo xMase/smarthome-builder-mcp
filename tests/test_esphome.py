@@ -278,3 +278,27 @@ async def test_ha_connection_lost_maps_to_esphome_error(tmp_path):
     with pytest.raises(ESPHomeError, match="connection lost"):
         async with session_for(FakeDBConn({}), ha)(_settings(tmp_path)):
             pass
+
+
+async def test_db_send_failure_maps_to_esphome_error(tmp_path):
+    db = FakeDBConn({"x": lambda a: []})
+
+    async def boom(obj):
+        raise ConnectionError("socket dropped")
+
+    async with session_for(db)(_settings(tmp_path)) as conn:
+        db.send = boom
+        with pytest.raises(ESPHomeError, match="connection lost"):
+            await conn.call("x")
+
+
+async def test_ha_auth_drop_maps_to_esphome_error(tmp_path):
+    ha = FakeHAWsConn([])
+
+    async def boom():
+        raise ConnectionError("socket dropped")
+
+    ha.recv = boom
+    with pytest.raises(ESPHomeError, match="connection lost"):
+        async with session_for(FakeDBConn({}), ha)(_settings(tmp_path)):
+            pass
