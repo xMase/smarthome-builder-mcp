@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from .config import Settings
 from .client import NRClient, NRError
 from .backup import BackupStore
-from . import flows, edit, modules, ha, runtime, validate, deploy, diagnostics, ha_ws, subflow_edit
+from . import flows, edit, modules, ha, runtime, validate, deploy, diagnostics, ha_ws, subflow_edit, esphome
 
 settings = Settings()
 client = NRClient(settings)
@@ -443,6 +443,99 @@ async def ha_ws_command(command: str, params: dict | None = None,
     if not settings.ha_url or not settings.ha_token:
         return _err("HA ha_ws_command needs HA_URL and HA_TOKEN to be set.")
     return await _wrap(lambda: ha_ws.run_command(settings, command, params, confirm=confirm))
+
+
+# ---- ESPHome (Device Builder add-on via HA ingress) ----
+def _esphome_unset() -> str | None:
+    if not settings.ha_url or not settings.ha_token:
+        return _err("ESPHome tools need HA_URL and HA_TOKEN to be set.")
+    return None
+
+
+@mcp.tool()
+async def esphome_list_devices() -> str:
+    """List ESPHome devices from the Device Builder add-on (via HA ingress): configuration,
+    state online/offline/unknown, address, IPs, installed vs deployed version, pending changes."""
+    return _esphome_unset() or await _wrap(lambda: esphome.list_devices(settings))
+
+
+@mcp.tool()
+async def esphome_get_config(configuration: str) -> str:
+    """Read an ESPHome YAML (bare name, e.g. 'onju.yaml'). Returns content + sha256; pass the
+    sha256 as base_sha256 to esphome_update_config. secrets.yaml is blocked unless
+    ESPHOME_ALLOW_SECRETS=true."""
+    return _esphome_unset() or await _wrap(lambda: esphome.get_config(settings, configuration))
+
+
+@mcp.tool()
+async def esphome_update_config(configuration: str, content: str, base_sha256: str | None = None,
+                                confirm: bool = False) -> str:
+    """Write an ESPHome YAML (full new content). Returns a diff preview + base_sha256 unless
+    confirm=true (DEPLOY_MODE=propose); then backs up the current file locally and writes.
+    Pass the preview's base_sha256 with confirm=true so a concurrent edit becomes a conflict."""
+    return _esphome_unset() or await _wrap(lambda: esphome.update_config(
+        settings, configuration, content, base_sha256=base_sha256, confirm=confirm))
+
+
+@mcp.tool()
+async def esphome_validate(configuration: str) -> str:
+    """Validate an ESPHome YAML on the Device Builder (esphome config). Returns success, code and
+    the last 200 output lines (secrets stay redacted)."""
+    return _esphome_unset() or await _wrap(lambda: esphome.validate(settings, configuration))
+
+
+@mcp.tool()
+async def esphome_logs(configuration: str, seconds: float = 10, max_lines: int = 200) -> str:
+    """Capture live device logs for `seconds` (max 60) or `max_lines` lines, then stop."""
+    return _esphome_unset() or await _wrap(lambda: esphome.logs(
+        settings, configuration, seconds=seconds, max_lines=max_lines))
+
+
+@mcp.tool()
+async def esphome_compile(configuration: str) -> str:
+    """Start a firmware compile on the Device Builder (no flash). Returns the job at once;
+    follow it with esphome_job_status. Starting a compile cancels (supersedes) queued or
+    running compile/install jobs of the same configuration, including the upload of an
+    earlier esphome_install."""
+    return _esphome_unset() or await _wrap(lambda: esphome.compile_firmware(settings, configuration))
+
+
+@mcp.tool()
+async def esphome_install(configuration: str, port: str = "OTA", confirm: bool = False) -> str:
+    """Compile and flash a device (default OTA). ALWAYS returns a preview (device state,
+    versions, deferred-install warning if offline) unless confirm=true, also with
+    DEPLOY_MODE=auto. Returns compile + upload job ids; follow with esphome_job_status."""
+    return _esphome_unset() or await _wrap(lambda: esphome.install(
+        settings, configuration, port=port, confirm=confirm))
+
+
+@mcp.tool()
+async def esphome_job_status(job_id: str, wait_seconds: float = 0, tail_lines: int = 50) -> str:
+    """Status + last output lines of a compile/upload job. wait_seconds (max 300) waits for the
+    job to end; done=true when completed/failed/cancelled."""
+    return _esphome_unset() or await _wrap(lambda: esphome.job_status(
+        settings, job_id, wait_seconds=wait_seconds, tail_lines=tail_lines))
+
+
+@mcp.tool()
+async def esphome_cancel_job(job_id: str) -> str:
+    """Cancel a queued or running compile/upload job (its dependent jobs cancel too)."""
+    return _esphome_unset() or await _wrap(lambda: esphome.cancel_job(settings, job_id))
+
+
+@mcp.tool()
+async def esphome_list_backups(configuration: str | None = None) -> str:
+    """List local ESPHome YAML backups (newest first), written before every esphome write."""
+    return await _wrap(lambda: esphome.list_backups(settings, configuration))
+
+
+@mcp.tool()
+async def esphome_restore_backup(backup_id: str, base_sha256: str | None = None,
+                                 confirm: bool = False) -> str:
+    """Restore a local ESPHome backup through the same write path as esphome_update_config
+    (diff preview, backup of the current file, conflict check)."""
+    return _esphome_unset() or await _wrap(lambda: esphome.restore_backup(
+        settings, backup_id, base_sha256=base_sha256, confirm=confirm))
 
 
 def main():

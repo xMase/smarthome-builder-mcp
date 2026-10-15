@@ -41,7 +41,7 @@ you care about.
 
 ## Tools
 
-40 MCP tools, grouped:
+51 MCP tools, grouped:
 
 | Group | Tools |
 |---|---|
@@ -52,6 +52,7 @@ you care about.
 | **Modules & testing** | `nr_get_installed_modules`, `nr_install_module`, `nr_inject` |
 | **Home Assistant** (read) | `ha_search_entities` (live entity lookup by id/name), `ha_get_state` (current state + attributes), `ha_get_services` (discover domains/services for authoring), `ha_get_entity_history`, `ha_get_entity_statistics`, `ha_list_ha_nodes`, `ha_get_server_config`, `ha_check_nodered_integration` |
 | **Home Assistant** (act) | `ha_call_service` — call any HA service (turn on/off, press buttons, nudge covers, set helpers) with a tiered safety gate (see below); `ha_ws_command` — send a raw HA WebSocket command (e.g. entity-registry edits); reads run immediately, writes need `confirm=true`; a `call_service` command obeys the shared service floor |
+| **ESPHome** (Device Builder add-on via HA ingress; needs `HA_URL` + `HA_TOKEN`) | `esphome_list_devices`, `esphome_get_config`, `esphome_validate`, `esphome_logs` (read); `esphome_update_config` and `esphome_restore_backup` (diff preview → `confirm=true` per `DEPLOY_MODE`, local backup first, sha256 conflict check); `esphome_compile` (no confirm; cancels queued/running compile/install jobs of the same configuration, including an earlier install's upload), `esphome_install` (**always** `confirm=true`, also in `auto`; offline device → deferred flash), `esphome_job_status`, `esphome_cancel_job`, `esphome_list_backups`. `secrets.yaml` is blocked unless `ESPHOME_ALLOW_SECRETS=true` |
 
 ## How the safety model works
 
@@ -98,6 +99,8 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 | `HA_CONFIRM_SERVICES` | default set | Comma-separated `domain.service` / `domain.*` entries that require `confirm=true`; without it the tool returns a dry-run preview. Unset = built-in default set (lock.unlock, lock.open, alarm_control_panel.alarm_disarm, alarm_control_panel.alarm_trigger, update.install). Set to empty string to gate nothing. |
 | `HA_WS_BLOCK_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` will always refuse (additive to the built-in floor; `confirm=true` cannot override). |
 | `HA_WS_READ_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` treats as read-only (additive to the built-in defaults), so they run immediately without `confirm=true`. |
+| `ESPHOME_ADDON_SLUG` | `5c53de3b_esphome` | Slug of the ESPHome Device Builder add-on used by the `esphome_*` tools (reached through HA ingress with `HA_URL` + `HA_TOKEN`; the token must belong to an HA admin user if the add-on panel is admin-only) |
+| `ESPHOME_ALLOW_SECRETS` | `false` | `true` lets `esphome_get_config` / `esphome_update_config` / `esphome_restore_backup` touch `secrets.yaml` / `secrets.yml` (their values then pass through the conversation). The block on direct reads/writes of `secrets.yaml` is not a security boundary: a device YAML can `!include secrets.yaml`, and `esphome_validate` output then shows the values |
 | `DEPLOY_MODE` | `propose` | `propose` (preview, write on `confirm=true`) or `auto` |
 | `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` (streamable-HTTP) |
