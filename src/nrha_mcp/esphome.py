@@ -120,7 +120,12 @@ async def _ha_result(conn, msg_id: int, msg: dict) -> dict:
 async def _open_ingress(settings, ha_connect=None) -> tuple[str, str]:
     """HA websocket: add-on ingress_url + a fresh ingress session id."""
     slug = settings.esphome_addon_slug
-    conn = await (ha_connect or ha_ws._default_connect)(settings)
+    try:
+        conn = await (ha_connect or ha_ws._default_connect)(settings)
+    except NRError:
+        raise
+    except Exception as e:
+        raise ESPHomeError(f"cannot reach the HA websocket: {type(e).__name__}: {e}") from None
     try:
         try:
             await ha_ws._auth(conn, settings.ha_token)
@@ -243,7 +248,10 @@ class _DB:
                 return list(lines), msg.get("data") or {}
             elif "result" in msg:
                 return list(lines), None
-        await self.call("devices/stop_stream", stream_id=mid)
+        try:
+            await self.call("devices/stop_stream", stream_id=mid)
+        except NRError:
+            pass  # the lines already collected matter more than a failed stop
         return list(lines), None
 
 
@@ -367,7 +375,8 @@ async def update_config(settings, configuration, content, *, base_sha256=None, c
         backup_id = store.snapshot(configuration, current) if current is not None else None
         if await _read_or_none(db, configuration) != current:
             raise NRConflictError(f"{configuration} changed while writing; nothing written "
-                                  f"(backup {backup_id} kept); re-read it and preview again.")
+                                  f"{f'(backup {backup_id} kept); ' if backup_id else ''}"
+                                  "re-read it and preview again.")
         args = {"configuration": configuration, "content": content}
         if current is not None and configuration.lower() not in _SECRETS:
             # ignored by Device Builder < 1.17, enforced after; secrets.yaml refuses it there
@@ -437,10 +446,17 @@ async def install(settings, configuration, *, port="OTA", confirm=False, session
                                   "and flashes automatically when the device comes back online.")
             return out
         job = await db.call("firmware/install", configuration=configuration, port=port)
-        jobs = _job_list(await db.call("firmware/get_jobs", configuration=configuration))
-    upload = next((j for j in jobs if j.get("depends_on") == (job or {}).get("job_id")), None)
-    return {"compile_job": _job(job), "upload_job": _job(upload) if upload else None,
-            "is_deferred_install": bool((job or {}).get("is_deferred_install"))}
+        try:
+            jobs = _job_list(await db.call("firmware/get_jobs", configuration=configuration))
+        except NRError:
+            jobs = None
+    cid = (job or {}).get("job_id")
+    upload = next((j for j in jobs if cid is not None and j.get("depends_on") == cid), None) if jobs else None
+    out = {"compile_job": _job(job), "upload_job": _job(upload) if upload else None,
+           "is_deferred_install": bool((job or {}).get("is_deferred_install"))}
+    if jobs is None:
+        out["warning"] = "the compile job started, but the upload job could not be looked up; use esphome_job_status."
+    return out
 
 
 async def job_status(settings, job_id, *, wait_seconds=0, tail_lines=50, session=None) -> dict:

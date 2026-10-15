@@ -619,3 +619,37 @@ async def test_cancel_job(tmp_path):
     res = await esphome.cancel_job(_settings(tmp_path), "c1", session=session_for(db))
     assert res == {"job_id": "c1", "result": {"cancelled": True}}
     assert sent(db, "firmware/cancel") == [{"job_id": "c1"}]
+
+
+async def test_ha_connect_refused_maps_to_esphome_error(tmp_path):
+    async def refuse(settings):
+        raise ConnectionRefusedError("nope")
+
+    with pytest.raises(ESPHomeError, match="cannot reach the HA websocket"):
+        async with esphome._session(_settings(tmp_path), ha_connect=refuse):
+            pass
+
+
+async def test_stream_stop_failure_keeps_lines(tmp_path):
+    db = FakeDBConn({"s": stream_open(["a", "b"]),
+                     "devices/stop_stream": lambda a: [{"error_code": "not_found", "details": "gone"}]})
+    async with session_for(db)(_settings(tmp_path)) as conn:
+        lines, final = await conn.stream("s", {}, seconds=0.05)
+    assert lines == ["a", "b"] and final is None
+
+
+async def test_install_get_jobs_error_keeps_compile_job(tmp_path):
+    db = FakeDBConn({"devices/list": reply({"configured": [DEV]}),
+                     "firmware/install": reply(JOB),
+                     "firmware/get_jobs": lambda a: [{"error_code": "internal", "details": "x"}]})
+    res = await esphome.install(_settings(tmp_path), "onju.yaml", confirm=True, session=session_for(db))
+    assert res["compile_job"]["job_id"] == "c1" and res["upload_job"] is None
+    assert "upload job" in res["warning"]
+
+
+async def test_install_job_without_id_never_matches_none_depends_on(tmp_path):
+    db = FakeDBConn({"devices/list": reply({"configured": [DEV]}),
+                     "firmware/install": reply({**JOB, "job_id": None}),
+                     "firmware/get_jobs": reply([{**JOB, "depends_on": None}])})
+    res = await esphome.install(_settings(tmp_path), "onju.yaml", confirm=True, session=session_for(db))
+    assert res["upload_job"] is None
