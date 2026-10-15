@@ -145,6 +145,7 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 | `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` (streamable-HTTP) |
 | `MCP_HTTP_HOST` / `MCP_HTTP_PORT` | `0.0.0.0` / `8080` | Bind address/port in `http` mode |
+| `MCP_AUTH_TOKEN` | — | Bearer token, **required in `http` mode** (the server refuses to start without it). Clients send `Authorization: Bearer <token>`. Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 
 Auth precedence: `NR_TOKEN` → `NR_USER`/`NR_PASS` (via `NR_AUTH` mode: `basic` or `token`) → none.
 
@@ -201,10 +202,12 @@ volume). In Compose, `environment:` wins over `env_file`, which is how those ove
 2. **Deploy the stack** in Portainer: *Stacks → Add stack → Web editor*, paste
    `deploy/portainer-stack.yml`, **Deploy the stack**. Set values via the stack's
    **Environment variables** UI (a host-side `.env` file isn't available there). (Edit `NR_URL`
-   to point at your own Node-RED, or keep the bundled throwaway one.)
+   to point at your own Node-RED, or keep the bundled throwaway one.) Set `MCP_AUTH_TOKEN` there:
+   without it the container exits at start.
 3. **Connect your MCP client** to the HTTP endpoint:
    ```bash
-   claude mcp add --transport http nrha http://<DOCKER_HOST_IP>:8080/mcp
+   claude mcp add --transport http nrha http://<DOCKER_HOST_IP>:8080/mcp \
+     --header "Authorization: Bearer <MCP_AUTH_TOKEN>"
    ```
 
 The container reaches Node-RED at `NR_URL` — use the Docker service name on a shared network

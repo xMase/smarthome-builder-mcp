@@ -6,6 +6,7 @@
 # "how do we pass env to compose": `env_file` feeds your tunables into the
 # container, while the container invariants below override anything in .env.
 # For Portainer use deploy/portainer-stack.yml instead (set env via the UI).
+# MCP_AUTH_TOKEN must be set in .env: the HTTP service refuses to start without it.
 services:
   nrha-mcp:
     build: .
