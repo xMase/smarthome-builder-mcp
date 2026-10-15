@@ -302,3 +302,93 @@ async def test_ha_auth_drop_maps_to_esphome_error(tmp_path):
     with pytest.raises(ESPHomeError, match="connection lost"):
         async with session_for(FakeDBConn({}), ha)(_settings(tmp_path)):
             pass
+
+
+DEV = {"configuration": "onju.yaml", "name": "onju", "address": "onju.local",
+       "current_version": "2026.9.1", "update_available": True, "has_pending_changes": True,
+       "runtime_state": {"state": "online", "ip_addresses": ["192.168.1.50"],
+                         "deployed_version": "2026.8.0", "queued_update": False}}
+
+
+async def test_list_devices_flattens(tmp_path):
+    db = FakeDBConn({"devices/list": reply({"configured": [DEV], "importable": []})})
+    res = await esphome.list_devices(_settings(tmp_path), session=session_for(db))
+    assert res["server_version"] == "1.14.9"
+    assert res["devices"] == [{
+        "configuration": "onju.yaml", "name": "onju", "state": "online", "address": "onju.local",
+        "ip_addresses": ["192.168.1.50"], "current_version": "2026.9.1",
+        "deployed_version": "2026.8.0", "update_available": True,
+        "has_pending_changes": True, "queued_update": False}]
+
+
+async def test_list_devices_fields_inside_runtime_state(tmp_path):
+    dev = {"configuration": "a.yaml", "name": "a",
+           "runtime_state": {"state": "offline", "update_available": False, "has_pending_changes": False}}
+    db = FakeDBConn({"devices/list": reply({"configured": [dev]})})
+    (d,) = (await esphome.list_devices(_settings(tmp_path), session=session_for(db)))["devices"]
+    assert d["state"] == "offline" and d["update_available"] is False and d["has_pending_changes"] is False
+
+
+@pytest.mark.parametrize("shape", ["esphome:\n  name: onju\n", {"content": "esphome:\n  name: onju\n"}])
+async def test_get_config_returns_content_and_sha(tmp_path, shape):
+    db = FakeDBConn({"devices/get_config": reply(shape)})
+    res = await esphome.get_config(_settings(tmp_path), "onju.yaml", session=session_for(db))
+    assert res == {"configuration": "onju.yaml", "content": "esphome:\n  name: onju\n",
+                   "sha256": esphome._sha("esphome:\n  name: onju\n")}
+    assert sent(db, "devices/get_config") == [{"configuration": "onju.yaml"}]
+
+
+async def test_get_config_rejects_before_connecting(tmp_path):
+    def never(settings):
+        raise AssertionError("must not connect")
+    with pytest.raises(ESPHomeError, match="ESPHOME_ALLOW_SECRETS"):
+        await esphome.get_config(_settings(tmp_path), "secrets.yaml", session=never)
+
+
+async def test_validate_success_never_shows_secrets(tmp_path):
+    db = FakeDBConn({"devices/validate": stream_result(["INFO ok"], {"success": True, "code": 0})})
+    res = await esphome.validate(_settings(tmp_path), "onju.yaml", session=session_for(db))
+    assert res == {"configuration": "onju.yaml", "success": True, "code": 0, "output_tail": ["INFO ok"]}
+    assert sent(db, "devices/validate") == [{"configuration": "onju.yaml"}]
+
+
+async def test_validate_failure_and_tail(tmp_path, monkeypatch):
+    monkeypatch.setattr(esphome, "STREAM_TAIL", 2)
+    db = FakeDBConn({"devices/validate": stream_result(["a", "b", "ERROR x"], {"success": False, "code": 2})})
+    res = await esphome.validate(_settings(tmp_path), "onju.yaml", session=session_for(db))
+    assert res["success"] is False and res["code"] == 2 and res["output_tail"] == ["b", "ERROR x"]
+
+
+async def test_validate_timeout(tmp_path, monkeypatch):
+    monkeypatch.setattr(esphome, "VALIDATE_TIMEOUT", 0.05)
+    db = FakeDBConn({"devices/validate": stream_open(["a"]), **STOP})
+    with pytest.raises(ESPHomeError, match="did not finish"):
+        await esphome.validate(_settings(tmp_path), "onju.yaml", session=session_for(db))
+
+
+async def test_logs_stop_at_max_lines(tmp_path):
+    db = FakeDBConn({"devices/logs": stream_open(["l1", "l2", "l3"]), **STOP})
+    res = await esphome.logs(_settings(tmp_path), "onju.yaml", seconds=5, max_lines=2,
+                             session=session_for(db))
+    assert res["lines"] == ["l1", "l2"] and res["ended"] is False
+    assert sent(db, "devices/stop_stream") == [{"stream_id": "1"}]
+
+
+async def test_logs_stop_at_deadline(tmp_path, monkeypatch):
+    db = FakeDBConn({"devices/logs": stream_open(["l1"]), **STOP})
+    res = await esphome.logs(_settings(tmp_path), "onju.yaml", seconds=0.05, session=session_for(db))
+    assert res["lines"] == ["l1"] and res["ended"] is False and res["seconds"] == 0.05
+    assert sent(db, "devices/stop_stream") == [{"stream_id": "1"}]
+
+
+async def test_logs_process_exit(tmp_path):
+    db = FakeDBConn({"devices/logs": stream_result(["ERROR Connecting failed"], {"success": False, "code": 1})})
+    res = await esphome.logs(_settings(tmp_path), "onju.yaml", seconds=5, session=session_for(db))
+    assert res["ended"] is True and res["exit_code"] == 1 and res["lines"] == ["ERROR Connecting failed"]
+
+
+async def test_logs_seconds_capped(tmp_path, monkeypatch):
+    monkeypatch.setattr(esphome, "LOGS_MAX_SECONDS", 0.05)
+    db = FakeDBConn({"devices/logs": stream_open([]), **STOP})
+    res = await esphome.logs(_settings(tmp_path), "onju.yaml", seconds=999, session=session_for(db))
+    assert res["seconds"] == 0.05
