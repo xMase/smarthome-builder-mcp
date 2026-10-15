@@ -182,6 +182,7 @@ Run it as a long-lived HTTP service (streamable-HTTP at `/mcp`).
 
 ```bash
 cp .env.example .env            # then set MCP_AUTH_TOKEN (required in http mode); edit others if you like
+python -c "import secrets; print(secrets.token_urlsafe(32))"   # generates a token for MCP_AUTH_TOKEN
 docker compose up -d --build    # starts the MCP service + a throwaway Node-RED
 # ... connect (below), then:  docker compose down -v
 ```
@@ -203,7 +204,8 @@ volume). In Compose, `environment:` wins over `env_file`, which is how those ove
    `deploy/portainer-stack.yml`, **Deploy the stack**. Set values via the stack's
    **Environment variables** UI (a host-side `.env` file isn't available there). (Edit `NR_URL`
    to point at your own Node-RED, or keep the bundled throwaway one.) Set `MCP_AUTH_TOKEN` there:
-   without it the container exits at start.
+   without it the deploy fails. Generate one with
+   `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
 3. **Connect your MCP client** to the HTTP endpoint:
    ```bash
    claude mcp add --transport http nrha http://<DOCKER_HOST_IP>:8080/mcp \
