@@ -133,3 +133,13 @@ def test_bearer_token_required_on_http_app(monkeypatch):
                             {"Authorization": "Bearer s3cret-token"}).status_code == 200
     assert _post_initialize(srv, "0.0.0.0", host,
                             {"Authorization": "bearer s3cret-token"}).status_code == 200
+
+
+def test_non_ascii_token_authenticates(monkeypatch):
+    # Starlette decodes header bytes as latin-1; the client sends the token as UTF-8.
+    srv = _fresh_server(monkeypatch, MCP_TRANSPORT="http", MCP_AUTH_TOKEN="sécret")
+    host = "192.168.200.6:8090"
+    assert _post_initialize(srv, "0.0.0.0", host,
+                            {"Authorization": "Bearer sécret".encode()}).status_code == 200
+    assert _post_initialize(srv, "0.0.0.0", host,
+                            {"Authorization": "Bearer secret"}).status_code == 401

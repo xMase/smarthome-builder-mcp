@@ -48,8 +48,8 @@ class _StaticTokenVerifier:
         self._token = token.encode()
 
     async def verify_token(self, token: str) -> AccessToken | None:
-        # bytes: compare_digest on a non-ASCII str raises TypeError
-        if hmac.compare_digest(token.encode(), self._token):
+        # Starlette decodes header bytes as latin-1: re-encode to get the raw (UTF-8) bytes back.
+        if hmac.compare_digest(token.encode("latin-1", "replace"), self._token):
             return AccessToken(token=token, client_id="static-token", scopes=[])
         return None
 
