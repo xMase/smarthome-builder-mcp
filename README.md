@@ -100,7 +100,7 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 | `HA_WS_BLOCK_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` will always refuse (additive to the built-in floor; `confirm=true` cannot override). |
 | `HA_WS_READ_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` treats as read-only (additive to the built-in defaults), so they run immediately without `confirm=true`. |
 | `ESPHOME_ADDON_SLUG` | `5c53de3b_esphome` | Slug of the ESPHome Device Builder add-on used by the `esphome_*` tools (reached through HA ingress with `HA_URL` + `HA_TOKEN`; the token must belong to an HA admin user if the add-on panel is admin-only) |
-| `ESPHOME_ALLOW_SECRETS` | `false` | `true` lets `esphome_get_config` / `esphome_update_config` / `esphome_restore_backup` touch `secrets.yaml` / `secrets.yml` (their values then pass through the conversation). The block on direct reads/writes of of `secrets.yaml` is not a security boundary: a device YAML can `!include secrets.yaml`, and `esphome_validate` output then shows the values |
+| `ESPHOME_ALLOW_SECRETS` | `false` | `true` lets `esphome_get_config` / `esphome_update_config` / `esphome_restore_backup` touch `secrets.yaml` / `secrets.yml` (their values then pass through the conversation). The block on direct reads/writes of `secrets.yaml` is not a security boundary: a device YAML can `!include secrets.yaml`, and `esphome_validate` output then shows the values |
 | `DEPLOY_MODE` | `propose` | `propose` (preview, write on `confirm=true`) or `auto` |
 | `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` (streamable-HTTP) |
