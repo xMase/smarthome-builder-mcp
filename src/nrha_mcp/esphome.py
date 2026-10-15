@@ -389,3 +389,78 @@ async def restore_backup(settings, backup_id, *, base_sha256=None, confirm=False
     configuration, content = store.read(backup_id)
     return await update_config(settings, configuration, content, base_sha256=base_sha256,
                                confirm=confirm, session=session, backups=store)
+
+
+# --- Tools: firmware jobs ----------------------------------------------------
+
+TERMINAL = {"completed", "failed", "cancelled"}
+_JOB_FIELDS = ("job_id", "configuration", "job_type", "status", "exit_code", "error",
+               "progress", "depends_on", "is_deferred_install")
+
+
+def _job(j: dict) -> dict:
+    return {k: (j or {}).get(k) for k in _JOB_FIELDS}
+
+
+def _job_list(res) -> list[dict]:
+    # shortcut: 1.14.9 get_jobs shape not observed live (list or {"jobs": [...]}); Task 7 confirms.
+    return res if isinstance(res, list) else (res or {}).get("jobs", [])
+
+
+def _check_job_id(job_id) -> str:
+    if not isinstance(job_id, str) or not job_id.strip():
+        raise ESPHomeError("job_id is required (from esphome_compile / esphome_install).")
+    return job_id
+
+
+async def compile_firmware(settings, configuration, *, session=None) -> dict:
+    check_configuration(configuration, settings)
+    async with (session or _session)(settings) as db:
+        job = await db.call("firmware/compile", configuration=configuration)
+    return {"job": _job(job)}
+
+
+async def install(settings, configuration, *, port="OTA", confirm=False, session=None) -> dict:
+    """Compile + flash. Always needs confirm=true, whatever DEPLOY_MODE says."""
+    check_configuration(configuration, settings)
+    async with (session or _session)(settings) as db:
+        devices = (await db.call("devices/list") or {}).get("configured", [])
+        dev = next((_flat_device(d) for d in devices if d.get("configuration") == configuration), None)
+        if dev is None:
+            raise NRNotFoundError(f"no ESPHome device with configuration {configuration}")
+        if not confirm:
+            out = {"preview": True, "device": dev, "port": port, "requires_confirm": True,
+                   "hint": "re-call with confirm=true to compile and flash "
+                           "(always required, also with DEPLOY_MODE=auto)."}
+            if port == "OTA" and dev["state"] == "offline":
+                out["warning"] = ("device is offline: the install becomes DEFERRED — it compiles now "
+                                  "and flashes automatically when the device comes back online.")
+            return out
+        job = await db.call("firmware/install", configuration=configuration, port=port)
+        jobs = _job_list(await db.call("firmware/get_jobs", configuration=configuration))
+    upload = next((j for j in jobs if j.get("depends_on") == (job or {}).get("job_id")), None)
+    return {"compile_job": _job(job), "upload_job": _job(upload) if upload else None,
+            "is_deferred_install": bool((job or {}).get("is_deferred_install"))}
+
+
+async def job_status(settings, job_id, *, wait_seconds=0, tail_lines=50, session=None) -> dict:
+    _check_job_id(job_id)
+    wait = min(max(float(wait_seconds), 0.0), JOB_MAX_WAIT)
+    tail = min(max(int(tail_lines), 1), 2000)
+    async with (session or _session)(settings) as db:
+        job = await db.call("firmware/get_job", job_id=job_id)
+        if not job:
+            raise NRNotFoundError(f"job {job_id} not found")
+        lines, final = await db.stream("firmware/follow_job", {"job_id": job_id},
+                                       seconds=max(wait, REPLAY_SECONDS), tail=tail)
+        if final is not None and job.get("status") not in TERMINAL:
+            job = await db.call("firmware/get_job", job_id=job_id) or job
+    out = _job(job)
+    return {**out, "done": out["status"] in TERMINAL, "output_tail": lines}
+
+
+async def cancel_job(settings, job_id, *, session=None) -> dict:
+    _check_job_id(job_id)
+    async with (session or _session)(settings) as db:
+        res = await db.call("firmware/cancel", job_id=job_id)
+    return {"job_id": job_id, "result": res}
