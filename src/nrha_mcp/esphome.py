@@ -327,3 +327,65 @@ async def logs(settings, configuration, *, seconds=10, max_lines=200, session=No
     if final is not None:
         out["exit_code"] = final.get("code")
     return out
+
+
+# --- Tools: write path -------------------------------------------------------
+
+def _diff(old: str, new: str, name: str) -> str:
+    text = "\n".join(difflib.unified_diff(old.splitlines(), new.splitlines(),
+                                          f"a/{name}", f"b/{name}", lineterm=""))
+    return text or "(only line endings or the final newline differ)"
+
+
+async def _read_or_none(db, configuration: str) -> str | None:
+    try:
+        return _content(await db.call("devices/get_config", configuration=configuration))
+    except NRNotFoundError:
+        return None
+
+
+async def update_config(settings, configuration, content, *, base_sha256=None, confirm=False,
+                        session=None, backups=None) -> dict:
+    """Preview (diff) → confirm per DEPLOY_MODE; backup, re-read check, then write."""
+    check_configuration(configuration, settings)
+    if not isinstance(content, str) or not content.strip():
+        raise ESPHomeError("content is empty; Device Builder refuses an empty device YAML.")
+    store = backups or YamlBackupStore(settings.backup_dir)
+    async with (session or _session)(settings) as db:
+        current = await _read_or_none(db, configuration)
+        cur_sha = _sha(current) if current is not None else None
+        if base_sha256 is not None and base_sha256 != cur_sha:
+            raise NRConflictError(f"{configuration} changed since it was read (sha256 now {cur_sha}); "
+                                  "re-read it and preview again.")
+        if current == content:
+            return {"configuration": configuration, "changed": False}
+        if settings.deploy_mode == "propose" and not confirm:
+            return {"preview": True, "configuration": configuration, "new_file": current is None,
+                    "diff": _diff(current or "", content, configuration), "base_sha256": cur_sha,
+                    "requires_confirm": True,
+                    "hint": "re-call with confirm=true and this base_sha256 to write."}
+        backup_id = store.snapshot(configuration, current) if current is not None else None
+        if await _read_or_none(db, configuration) != current:
+            raise NRConflictError(f"{configuration} changed while writing; nothing written "
+                                  f"(backup {backup_id} kept); re-read it and preview again.")
+        args = {"configuration": configuration, "content": content}
+        if current is not None and configuration.lower() not in _SECRETS:
+            # ignored by Device Builder < 1.17, enforced after; secrets.yaml refuses it there
+            args["expected"] = current
+        await db.call("devices/update_config", **args)
+    return {"configuration": configuration, "changed": True, "backup_id": backup_id,
+            "sha256": _sha(content)}
+
+
+async def list_backups(settings, configuration=None) -> dict:
+    if configuration is not None:
+        check_configuration(configuration, settings)
+    return {"backups": YamlBackupStore(settings.backup_dir).list(configuration)}
+
+
+async def restore_backup(settings, backup_id, *, base_sha256=None, confirm=False,
+                         session=None, backups=None) -> dict:
+    store = backups or YamlBackupStore(settings.backup_dir)
+    configuration, content = store.read(backup_id)
+    return await update_config(settings, configuration, content, base_sha256=base_sha256,
+                               confirm=confirm, session=session, backups=store)

@@ -392,3 +392,141 @@ async def test_logs_seconds_capped(tmp_path, monkeypatch):
     db = FakeDBConn({"devices/logs": stream_open([]), **STOP})
     res = await esphome.logs(_settings(tmp_path), "onju.yaml", seconds=999, session=session_for(db))
     assert res["seconds"] == 0.05
+
+
+OLD = "esphome:\r\n  name: onju\r\n"
+NEW = "esphome:\r\n  name: onju2\r\n"
+
+
+def _files(initial):
+    """Handlers backed by a dict of files; update_config writes into it."""
+    files = dict(initial)
+
+    def get(args):
+        if args["configuration"] not in files:
+            return [{"error_code": "not_found", "details": "missing"}]
+        return [{"result": files[args["configuration"]]}]
+
+    def put(args):
+        files[args["configuration"]] = args["content"]
+        return [{"result": None}]
+
+    return files, {"devices/get_config": get, "devices/update_config": put}
+
+
+async def test_update_preview_writes_nothing(tmp_path):
+    files, h = _files({"onju.yaml": OLD})
+    db = FakeDBConn(h)
+    res = await esphome.update_config(_settings(tmp_path), "onju.yaml", NEW, session=session_for(db))
+    assert res["preview"] is True and res["requires_confirm"] is True and res["new_file"] is False
+    assert res["base_sha256"] == esphome._sha(OLD)
+    assert "-  name: onju" in res["diff"] and "+  name: onju2" in res["diff"]
+    assert files["onju.yaml"] == OLD and sent(db, "devices/update_config") == []
+    assert not (tmp_path / "esphome").exists()
+
+
+async def test_update_confirm_backs_up_and_sends_expected(tmp_path):
+    files, h = _files({"onju.yaml": OLD})
+    db = FakeDBConn(h)
+    res = await esphome.update_config(_settings(tmp_path), "onju.yaml", NEW,
+                                      base_sha256=esphome._sha(OLD), confirm=True,
+                                      session=session_for(db))
+    assert res["changed"] is True and res["sha256"] == esphome._sha(NEW)
+    assert files["onju.yaml"] == NEW
+    assert sent(db, "devices/update_config") == [
+        {"configuration": "onju.yaml", "content": NEW, "expected": OLD}]
+    assert (tmp_path / "esphome" / res["backup_id"]).read_bytes() == OLD.encode()
+
+
+async def test_update_secrets_sends_no_expected(tmp_path):
+    # Device Builder >= 1.17 answers invalid_args to `expected` on secrets.yaml.
+    files, h = _files({"secrets.yaml": "wifi: a\n"})
+    db = FakeDBConn(h)
+    await esphome.update_config(_settings(tmp_path, esphome_allow_secrets=True), "secrets.yaml",
+                                "wifi: b\n", confirm=True, session=session_for(db))
+    assert sent(db, "devices/update_config") == [{"configuration": "secrets.yaml", "content": "wifi: b\n"}]
+
+
+async def test_update_auto_mode_writes_without_confirm(tmp_path):
+    files, h = _files({"onju.yaml": OLD})
+    res = await esphome.update_config(_settings(tmp_path, deploy_mode="auto"), "onju.yaml", NEW,
+                                      session=session_for(FakeDBConn(h)))
+    assert res["changed"] is True and files["onju.yaml"] == NEW
+
+
+async def test_update_no_change(tmp_path):
+    files, h = _files({"onju.yaml": OLD})
+    db = FakeDBConn(h)
+    res = await esphome.update_config(_settings(tmp_path), "onju.yaml", OLD, confirm=True,
+                                      session=session_for(db))
+    assert res == {"configuration": "onju.yaml", "changed": False}
+    assert sent(db, "devices/update_config") == []
+
+
+async def test_update_base_sha_conflict(tmp_path):
+    files, h = _files({"onju.yaml": OLD})
+    db = FakeDBConn(h)
+    with pytest.raises(NRConflictError, match="re-read"):
+        await esphome.update_config(_settings(tmp_path), "onju.yaml", NEW, base_sha256="0" * 64,
+                                    confirm=True, session=session_for(db))
+    assert files["onju.yaml"] == OLD
+
+
+async def test_update_reread_conflict(tmp_path):
+    reads = iter([OLD, "changed meanwhile\n"])
+    db = FakeDBConn({"devices/get_config": lambda a: [{"result": next(reads)}],
+                     "devices/update_config": reply(None)})
+    with pytest.raises(NRConflictError, match="changed while writing"):
+        await esphome.update_config(_settings(tmp_path), "onju.yaml", NEW, confirm=True,
+                                    session=session_for(db))
+    assert sent(db, "devices/update_config") == []
+
+
+async def test_update_confirm_without_base_still_writes(tmp_path):
+    # Review Focus: base_sha256 is optional; without it only the re-read check applies.
+    files, h = _files({"onju.yaml": "edited after preview\n"})
+    res = await esphome.update_config(_settings(tmp_path), "onju.yaml", NEW, confirm=True,
+                                      session=session_for(FakeDBConn(h)))
+    assert res["changed"] is True and files["onju.yaml"] == NEW
+
+
+async def test_update_new_file(tmp_path):
+    files, h = _files({})
+    db = FakeDBConn(h)
+    prev = await esphome.update_config(_settings(tmp_path), "new.yaml", NEW, session=session_for(db))
+    assert prev["new_file"] is True and prev["base_sha256"] is None
+    res = await esphome.update_config(_settings(tmp_path), "new.yaml", NEW, confirm=True,
+                                      session=session_for(FakeDBConn(h)))
+    assert res["backup_id"] is None and files["new.yaml"] == NEW
+
+
+async def test_update_rejects_empty_content(tmp_path):
+    with pytest.raises(ESPHomeError, match="empty"):
+        await esphome.update_config(_settings(tmp_path), "onju.yaml", "  \n", confirm=True,
+                                    session=lambda s: (_ for _ in ()).throw(AssertionError()))
+
+
+async def test_list_backups(tmp_path):
+    store = esphome.YamlBackupStore(str(tmp_path))
+    bid = store.snapshot("onju.yaml", OLD)
+    res = await esphome.list_backups(_settings(tmp_path), "onju.yaml")
+    assert [b["backup_id"] for b in res["backups"]] == [bid]
+
+
+async def test_restore_goes_through_write_path(tmp_path):
+    store = esphome.YamlBackupStore(str(tmp_path))
+    bid = store.snapshot("onju.yaml", OLD)
+    files, h = _files({"onju.yaml": NEW})
+    prev = await esphome.restore_backup(_settings(tmp_path), bid, session=session_for(FakeDBConn(h)))
+    assert prev["preview"] is True and files["onju.yaml"] == NEW
+    res = await esphome.restore_backup(_settings(tmp_path), bid, base_sha256=prev["base_sha256"],
+                                       confirm=True, session=session_for(FakeDBConn(h)))
+    assert res["changed"] is True and files["onju.yaml"] == OLD
+    assert len(store.list("onju.yaml")) == 2  # the restore backed up NEW first
+
+
+async def test_restore_secrets_backup_blocked(tmp_path):
+    bid = esphome.YamlBackupStore(str(tmp_path)).snapshot("secrets.yaml", "wifi: x\n")
+    with pytest.raises(ESPHomeError, match="ESPHOME_ALLOW_SECRETS"):
+        await esphome.restore_backup(_settings(tmp_path), bid, confirm=True,
+                                     session=lambda s: (_ for _ in ()).throw(AssertionError()))
