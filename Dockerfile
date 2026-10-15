@@ -17,4 +17,4 @@ ENV MCP_TRANSPORT=http \
 EXPOSE 8080
 VOLUME ["/data"]
 
-CMD ["node-red-homeassistant-mcp"]
+CMD ["smarthome-builder-mcp"]

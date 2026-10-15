@@ -1,4 +1,4 @@
-# node-red-homeassistant-mcp
+# smarthome-builder-mcp
 
 > [!WARNING]
 > This server acts on real things: it **deploys Node-RED flows**, **calls Home Assistant services**
@@ -155,7 +155,7 @@ Auth precedence: `NR_TOKEN` → `NR_USER`/`NR_PASS` (via `NR_AUTH` mode: `basic`
 Until it's published to PyPI, install from source into a virtualenv:
 
 ```bash
-git clone <this-repo> node-red-homeassistant-mcp && cd node-red-homeassistant-mcp
+git clone <this-repo> smarthome-builder-mcp && cd smarthome-builder-mcp
 uv venv --python 3.12 .venv && uv pip install -e .
 # (or without uv:  python3 -m venv .venv && .venv/bin/pip install -e .)
 ```
@@ -167,7 +167,7 @@ config as `-e KEY=VALUE` (not via `.env`):
 claude mcp add nrha -s user \
   -e NR_URL=http://localhost:1880 \
   -e DEPLOY_MODE=propose \
-  -- /ABSOLUTE/PATH/TO/.venv/bin/node-red-homeassistant-mcp
+  -- /ABSOLUTE/PATH/TO/.venv/bin/smarthome-builder-mcp
 ```
 
 Then open a **new** Claude Code session (MCP servers load at startup) and ask it to use the tools,
@@ -196,7 +196,7 @@ volume). In Compose, `environment:` wins over `env_file`, which is how those ove
 
 1. **Build the image** on your Docker host:
    ```bash
-   docker build -t node-red-homeassistant-mcp:local .
+   docker build -t smarthome-builder-mcp:local .
    ```
 2. **Deploy the stack** in Portainer: *Stacks → Add stack → Web editor*, paste
    `deploy/portainer-stack.yml`, **Deploy the stack**. Set values via the stack's

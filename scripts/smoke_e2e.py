@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end stdio smoke test for node-red-homeassistant-mcp.
+"""End-to-end stdio smoke test for smarthome-builder-mcp.
 
 Requires a running Node-RED instance (e.g. `docker compose up -d nodered`).
 Set NR_URL to point at it (default: http://localhost:1880).

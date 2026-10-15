@@ -24,8 +24,8 @@ NR_URL=http://localhost:1880 .venv/bin/python scripts/smoke_e2e.py
 docker compose down -v
 
 # Run the server directly
-.venv/bin/node-red-homeassistant-mcp                 # stdio (default)
-MCP_TRANSPORT=http .venv/bin/node-red-homeassistant-mcp   # streamable-HTTP at /mcp
+.venv/bin/smarthome-builder-mcp                 # stdio (default)
+MCP_TRANSPORT=http .venv/bin/smarthome-builder-mcp   # streamable-HTTP at /mcp
 
 # Full local stack (MCP HTTP service + throwaway Node-RED); reads ./.env
 docker compose up -d --build

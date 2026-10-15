@@ -1,7 +1,7 @@
 THIRD-PARTY NOTICES
 ===================
 
-This project (node-red-homeassistant-mcp) is licensed under the MIT License; see
+This project (smarthome-builder-mcp) is licensed under the MIT License; see
 the LICENSE file at the repository root.
 
 It is a port/derivative of, and incorporates portions of, the following
@@ -11,7 +11,7 @@ permission notice are reproduced verbatim below.
 -------------------------------------------------------------------------------
 Component: nr-mcp
 Source:    https://github.com/Texan-NXTassist/nr-mcp
-Notes:     node-red-homeassistant-mcp is based on nr-mcp and also incorporates
+Notes:     smarthome-builder-mcp is based on nr-mcp and also incorporates
            its open Pull Request #3 (NR_VERIFY_SSL, nr_get_global_context,
            nr_safe_deploy_many, nr_add_wire, and the `fields` parameter on
            nr_get_flow).

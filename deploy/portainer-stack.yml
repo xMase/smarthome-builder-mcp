@@ -9,7 +9,7 @@
 # `docker login ghcr.io` on the host, before deploying.
 services:
   nrha-mcp:
-    image: "ghcr.io/xmase/node-red-homeassistant-mcp:${NRHA_VERSION:-latest}"
+    image: "ghcr.io/xmase/smarthome-builder-mcp:${NRHA_VERSION:-latest}"
     pull_policy: always              # re-pull on redeploy so a new tag is picked up
     environment:
       NR_URL: "http://nodered:1880"   # point at your own Node-RED to skip the test one

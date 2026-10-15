@@ -1,4 +1,4 @@
-"""FastMCP server for node-red-homeassistant-mcp."""
+"""FastMCP server for smarthome-builder-mcp."""
 
 import json
 
@@ -33,7 +33,7 @@ HA_AUTHORING_GUIDANCE = (
 )
 
 mcp = FastMCP(
-    "node-red-homeassistant-mcp",
+    "smarthome-builder-mcp",
     instructions=HA_AUTHORING_GUIDANCE,
     json_response=True,
     host=settings.mcp_http_host,
