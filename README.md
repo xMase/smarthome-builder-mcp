@@ -6,20 +6,29 @@
 > reduce the risk; they do not remove it. Back up your setup first, and use it at your own risk
 > (MIT, no warranty — see [`LICENSE`](LICENSE)).
 
-MCP server for **Node-RED** with **Home Assistant** awareness and **safe, backup-first deploy**.
+MCP server that lets an AI assistant (Claude, or any MCP client) manage a Home Assistant smart home
+across three systems — **Node-RED**, **Home Assistant** and **ESPHome** — with **safe,
+backup-first changes**.
 
-It lets an AI assistant (Claude, or any MCP client) **read, author, and deploy Node-RED flows**
-through Node-RED's Admin API — without breaking a working installation:
+What it manages:
 
-- **Backup-first** — every change snapshots the current flows to disk *before* writing.
-- **Optimistic locking** — deploys use the correct `GET → POST /flows` pattern, so a concurrent
-  edit is detected (never silently overwritten) and tab order is preserved.
+- **Node-RED flows** — read, author and deploy flows through Node-RED's Admin API, with
+  awareness of `node-red-contrib-home-assistant-websocket` nodes and their entity/service
+  references.
+- **Home Assistant** — search entities, read states, history and statistics, and call services.
+- **ESPHome devices** — list devices, read and edit their YAML, validate it, read live logs,
+  compile and **flash firmware over the air (OTA)**. It goes through the ESPHome Device Builder
+  add-on over HA ingress, so `HA_URL` + `HA_TOKEN` are all it needs.
+
+How it stays safe:
+
+- **Backup-first** — every flow or ESPHome YAML change snapshots the current version to disk
+  *before* writing.
+- **Optimistic locking** — flow deploys use the correct `GET → POST /flows` pattern, so a concurrent
+  edit is detected (never silently overwritten) and tab order is preserved; ESPHome writes check
+  a sha256 of the file the same way.
 - **Preview, then confirm** — by default mutating tools return a diff *preview* and write nothing
-  until you call them again with `confirm=true`.
-- **Home-Assistant-aware** — recognizes `node-red-contrib-home-assistant-websocket` nodes and
-  lists their entity/service references.
-- **ESPHome** — lists, reads, edits, validates, logs, compiles and OTA-flashes ESPHome devices
-  through the ESPHome Device Builder add-on over HA ingress (only `HA_URL` + `HA_TOKEN` needed).
+  until you call them again with `confirm=true`. An ESPHome flash **always** needs `confirm=true`.
 
 Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) (MIT). See `NOTICE`.
 
