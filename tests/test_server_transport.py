@@ -1,5 +1,7 @@
 import importlib
 import importlib.metadata
+import tomllib
+from pathlib import Path
 
 from starlette.testclient import TestClient
 
@@ -64,11 +66,20 @@ def test_stdio_is_default(monkeypatch):
 
 
 def test_server_reports_package_version(monkeypatch):
+    # Compare with pyproject, not the installed metadata: catches a stale editable install.
     srv = _fresh_server(monkeypatch, MCP_TRANSPORT="stdio")
-    expected = importlib.metadata.version("smarthome-builder-mcp")
-    assert expected
+    with open(Path(__file__).resolve().parent.parent / "pyproject.toml", "rb") as f:
+        expected = tomllib.load(f)["project"]["version"]
     assert srv.mcp.name == "smarthome-builder-mcp"
     assert srv.mcp.version == expected
+
+
+def test_uninstalled_checkout_still_starts(monkeypatch):
+    def missing(name):
+        raise importlib.metadata.PackageNotFoundError(name)
+    monkeypatch.setattr(importlib.metadata, "version", missing)
+    srv = _fresh_server(monkeypatch, MCP_TRANSPORT="stdio")
+    assert srv.mcp.version == "0.0.0+unknown"
 
 
 def test_instructions_are_the_authoring_guidance(monkeypatch):
