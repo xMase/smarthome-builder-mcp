@@ -494,7 +494,9 @@ async def esphome_logs(configuration: str, seconds: float = 10, max_lines: int =
 @mcp.tool()
 async def esphome_compile(configuration: str) -> str:
     """Start a firmware compile on the Device Builder (no flash). Returns the job at once;
-    follow it with esphome_job_status."""
+    follow it with esphome_job_status. Starting a compile cancels (supersedes) queued or
+    running compile/install jobs of the same configuration, including the upload of an
+    earlier esphome_install."""
     return _esphome_unset() or await _wrap(lambda: esphome.compile_firmware(settings, configuration))
 
 
