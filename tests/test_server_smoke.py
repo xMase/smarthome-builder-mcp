@@ -16,6 +16,9 @@ def test_tools_registered():
         "ha_check_nodered_integration", "ha_call_service", "ha_ws_command",
         "nr_instantiate_subflow", "nr_add_subflow_port", "nr_remove_subflow_port", "nr_delete_subflow",
         "nr_create_subflow",
+        "esphome_list_devices", "esphome_get_config", "esphome_update_config", "esphome_validate",
+        "esphome_logs", "esphome_compile", "esphome_install", "esphome_job_status",
+        "esphome_cancel_job", "esphome_list_backups", "esphome_restore_backup",
     }
     assert expected.issubset(names)
-    assert len(names) == 40
+    assert len(names) == 51
