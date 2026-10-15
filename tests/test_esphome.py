@@ -250,3 +250,31 @@ async def test_default_db_connect_maps_403(monkeypatch):
     monkeypatch.setattr(websockets, "connect", refuse)
     with pytest.raises(NRAuthError, match="HTTP 403"):
         await esphome._default_db_connect("ws://ha/x/ws", "ingress_session=S")
+
+
+async def test_db_connection_lost_maps_to_esphome_error(tmp_path):
+    db = FakeDBConn({"x": lambda a: []})
+
+    async def boom():
+        raise ConnectionError("socket dropped")
+
+    async with session_for(db)(_settings(tmp_path)) as conn:
+        db.recv = boom
+        with pytest.raises(ESPHomeError, match="connection lost"):
+            await conn.call("x")
+
+
+async def test_ha_connection_lost_maps_to_esphome_error(tmp_path):
+    ha = FakeHAWsConn(_ha_frames()[:2])  # auth completes, then recv fails
+    orig = ha.recv
+
+    async def flaky():
+        try:
+            return await orig()
+        except Exception:
+            raise ConnectionError("socket dropped")
+
+    ha.recv = flaky
+    with pytest.raises(ESPHomeError, match="connection lost"):
+        async with session_for(FakeDBConn({}), ha)(_settings(tmp_path)):
+            pass

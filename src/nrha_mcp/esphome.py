@@ -102,9 +102,17 @@ def _db_ws_url(ha_url: str, ingress_url: str) -> str:
 
 
 async def _ha_result(conn, msg_id: int, msg: dict) -> dict:
-    await conn.send({"id": msg_id, **msg})
+    try:
+        await conn.send({"id": msg_id, **msg})
+    except Exception as e:
+        raise ESPHomeError(f"HA websocket connection lost: {type(e).__name__}: {e}") from None
     while True:
-        reply = await conn.recv()
+        try:
+            reply = await conn.recv()
+        except asyncio.TimeoutError:
+            raise
+        except Exception as e:
+            raise ESPHomeError(f"HA websocket connection lost: {type(e).__name__}: {e}") from None
         if reply.get("id") == msg_id and reply.get("type") == "result":
             return reply
 
@@ -151,6 +159,8 @@ async def _default_db_connect(url: str, cookie: str):
             raise NRAuthError(f"HA ingress refused the Device Builder websocket (HTTP {status}); "
                               "the HA token must belong to an admin user") from None
         raise ESPHomeError(f"HA ingress refused the Device Builder websocket (HTTP {status})") from None
+    except websockets.exceptions.InvalidHandshake as e:
+        raise ESPHomeError(f"Device Builder websocket handshake failed: {type(e).__name__}: {e}") from None
     except (OSError, asyncio.TimeoutError) as e:
         raise ESPHomeError(f"cannot reach Device Builder through HA ingress: {e}") from None
     return ha_ws._HAWsConn(ws)
@@ -179,7 +189,12 @@ class _DB:
         return mid
 
     async def _recv(self, timeout: float) -> dict:
-        return await asyncio.wait_for(self._conn.recv(), timeout)
+        try:
+            return await asyncio.wait_for(self._conn.recv(), timeout)
+        except asyncio.TimeoutError:
+            raise
+        except Exception as e:
+            raise ESPHomeError(f"Device Builder connection lost: {type(e).__name__}: {e}") from None
 
     async def call(self, command: str, **args):
         mid = await self._send(command, args)
