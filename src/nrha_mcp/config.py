@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     ha_ws_block_commands: str = ""            # additive block-list of WS command types
     ha_ws_read_commands: str | None = None    # additive to the read allowlist (None=just defaults)
 
+    # ESPHome Device Builder via HA ingress (esphome_* tools; needs HA_URL + HA_TOKEN)
+    esphome_addon_slug: str = "5c53de3b_esphome"
+    esphome_allow_secrets: bool = False   # unblocks secrets.yaml / secrets.yml
+
     # Transport
     mcp_transport: Literal["stdio", "http"] = "stdio"
     mcp_http_host: str = "0.0.0.0"
