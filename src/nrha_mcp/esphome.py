@@ -266,3 +266,64 @@ async def _session(settings, *, ha_connect=None, db_connect=None):
         yield db
     finally:
         await conn.close()
+
+
+# --- Tools: read and check --------------------------------------------------
+
+_DEVICE_FIELDS = ("update_available", "has_pending_changes")
+_RUNTIME_FIELDS = ("state", "ip_addresses", "deployed_version", "queued_update")
+
+
+def _flat_device(d: dict) -> dict:
+    # shortcut: shapes read from Device Builder 1.14.9 source, not observed live; Task 7 confirms.
+    rs = d.get("runtime_state") or {}
+    out = {"configuration": d.get("configuration"), "name": d.get("name"),
+           "address": d.get("address"), "current_version": d.get("current_version")}
+    for k in _RUNTIME_FIELDS:
+        out[k] = rs.get(k, d.get(k))
+    for k in _DEVICE_FIELDS:
+        out[k] = d.get(k, rs.get(k))
+    return out
+
+
+def _content(res) -> str:
+    return res if isinstance(res, str) else (res or {}).get("content", "")
+
+
+async def list_devices(settings, *, session=None) -> dict:
+    async with (session or _session)(settings) as db:
+        res = await db.call("devices/list")
+        version = db.server_info.get("server_version")
+    return {"server_version": version,
+            "devices": [_flat_device(d) for d in (res or {}).get("configured", [])]}
+
+
+async def get_config(settings, configuration, *, session=None) -> dict:
+    check_configuration(configuration, settings)
+    async with (session or _session)(settings) as db:
+        content = _content(await db.call("devices/get_config", configuration=configuration))
+    return {"configuration": configuration, "content": content, "sha256": _sha(content)}
+
+
+async def validate(settings, configuration, *, session=None) -> dict:
+    check_configuration(configuration, settings)
+    async with (session or _session)(settings) as db:
+        lines, final = await db.stream("devices/validate", {"configuration": configuration},
+                                       seconds=VALIDATE_TIMEOUT, tail=STREAM_TAIL)
+    if final is None:
+        raise ESPHomeError(f"validate of {configuration} did not finish in {VALIDATE_TIMEOUT}s")
+    return {"configuration": configuration, "success": bool(final.get("success")),
+            "code": final.get("code"), "output_tail": lines}
+
+
+async def logs(settings, configuration, *, seconds=10, max_lines=200, session=None) -> dict:
+    check_configuration(configuration, settings)
+    secs = min(max(float(seconds), 0.05), LOGS_MAX_SECONDS)
+    limit = min(max(int(max_lines), 1), 2000)
+    async with (session or _session)(settings) as db:
+        lines, final = await db.stream("devices/logs", {"configuration": configuration},
+                                       seconds=secs, max_lines=limit)
+    out = {"configuration": configuration, "seconds": secs, "lines": lines, "ended": final is not None}
+    if final is not None:
+        out["exit_code"] = final.get("code")
+    return out
