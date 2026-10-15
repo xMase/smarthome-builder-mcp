@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A FastMCP server (`mcp` SDK) that lets an AI assistant read, author, and deploy **Node-RED** flows
+An MCP server (`mcp` SDK 2.x, `MCPServer`) that lets an AI assistant read, author, and deploy **Node-RED** flows
 through Node-RED's Admin API, with **Home Assistant awareness** and a **safe, backup-first deploy**
 model. Python 3.11+, packaged with hatchling. Ported from `nr-mcp` (MIT); see `NOTICE`.
 

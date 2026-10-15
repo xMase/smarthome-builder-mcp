@@ -4,7 +4,7 @@ declare it. Adding/removing a tool in server.py without updating BOTH the
 EXPECTED_TOOLS in scripts/smoke_e2e.py silently breaks the smoke tests. This test
 fails loudly and names the exact divergence instead.
 
-Source of truth: the tools actually registered on the FastMCP server.
+Source of truth: the tools actually registered on the MCPServer.
 """
 
 import ast
@@ -19,7 +19,7 @@ SERVER_SMOKE = ROOT / "tests" / "test_server_smoke.py"
 
 
 def _registered_tool_names() -> set[str]:
-    # FastMCP stores registered tools in _tool_manager._tools (keyed by name).
+    # MCPServer stores registered tools in _tool_manager._tools (keyed by name).
     return set(srv.mcp._tool_manager._tools.keys())
 
 

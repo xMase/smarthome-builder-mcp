@@ -1,8 +1,9 @@
-"""FastMCP server for smarthome-builder-mcp."""
+"""MCP server for smarthome-builder-mcp."""
 
 import json
+from importlib.metadata import version
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from .config import Settings
 from .client import NRClient, NRError
@@ -32,13 +33,10 @@ HA_AUTHORING_GUIDANCE = (
     "— don't build throwaway nodes for it."
 )
 
-mcp = FastMCP(
+mcp = MCPServer(
     "smarthome-builder-mcp",
     instructions=HA_AUTHORING_GUIDANCE,
-    json_response=True,
-    host=settings.mcp_http_host,
-    port=settings.mcp_http_port,
-    stateless_http=True,
+    version=version("smarthome-builder-mcp"),
 )
 
 
@@ -540,8 +538,11 @@ async def esphome_restore_backup(backup_id: str, base_sha256: str | None = None,
 
 def main():
     """Console-script entry point."""
-    transport = "streamable-http" if settings.mcp_transport == "http" else "stdio"
-    mcp.run(transport=transport)
+    if settings.mcp_transport == "http":
+        mcp.run(transport="streamable-http", host=settings.mcp_http_host,
+                port=settings.mcp_http_port, json_response=True, stateless_http=True)
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

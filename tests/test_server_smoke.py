@@ -3,7 +3,7 @@ import nrha_mcp.server as srv
 
 
 def test_tools_registered():
-    # FastMCP 1.27.1 stores registered tools in _tool_manager._tools (dict keyed by name).
+    # MCPServer (mcp 2.x) stores registered tools in _tool_manager._tools (dict keyed by name).
     names = set(srv.mcp._tool_manager._tools.keys())
     expected = {
         "nr_get_flow_summary", "nr_get_flow", "nr_export_flow", "nr_get_subflow", "nr_search_nodes", "nr_get_function_code",
