@@ -9,7 +9,7 @@
 services:
   nrha-mcp:
     build: .
-    image: node-red-homeassistant-mcp:local
+    image: smarthome-builder-mcp:local
     # Your tunables come from .env: DEPLOY_MODE, MCP_HTTP_PORT, NR_AUTH,
     # NR_TOKEN/NR_USER/NR_PASS, ...
     env_file:

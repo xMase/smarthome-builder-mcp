@@ -19,7 +19,7 @@ name: nrha-dev
 services:
   nrha-mcp:
     build: .
-    image: node-red-homeassistant-mcp:dev
+    image: smarthome-builder-mcp:dev
     # Your tunables (HA_URL/HA_TOKEN, NR_URL, NR_AUTH/NR_*, DEPLOY_MODE, ...) come from .env.
     env_file:
       - .env
@@ -34,7 +34,7 @@ services:
     command:
       - sh
       - -c
-      - pip install -e . --no-deps -q && exec node-red-homeassistant-mcp
+      - pip install -e . --no-deps -q && exec smarthome-builder-mcp
     volumes:
       - ./src:/app/src
       - ./pyproject.toml:/app/pyproject.toml:ro

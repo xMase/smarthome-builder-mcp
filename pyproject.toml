@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "node-red-homeassistant-mcp"
-version = "0.1.0"
+name = "smarthome-builder-mcp"
+version = "0.2.0"
 description = "MCP server for Node-RED, Home Assistant and ESPHome, with safe, backup-first changes"
 requires-python = ">=3.11"
 license = "MIT"
@@ -31,10 +31,10 @@ dependencies = [
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "respx>=0.21"]
 
 [project.scripts]
-node-red-homeassistant-mcp = "nrha_mcp.server:main"
+smarthome-builder-mcp = "nrha_mcp.server:main"
 
 [project.urls]
-Homepage = "https://github.com/xmase/node-red-homeassistant-mcp"
+Homepage = "https://github.com/xmase/smarthome-builder-mcp"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nrha_mcp"]
