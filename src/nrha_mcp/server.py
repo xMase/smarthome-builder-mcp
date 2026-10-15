@@ -1,7 +1,7 @@
 """MCP server for smarthome-builder-mcp."""
 
 import json
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
 from mcp.server.mcpserver import MCPServer
 
@@ -33,10 +33,15 @@ HA_AUTHORING_GUIDANCE = (
     "— don't build throwaway nodes for it."
 )
 
+try:
+    _version = version("smarthome-builder-mcp")
+except PackageNotFoundError:  # source checkout run without installing the package
+    _version = "0.0.0+unknown"
+
 mcp = MCPServer(
     "smarthome-builder-mcp",
     instructions=HA_AUTHORING_GUIDANCE,
-    version=version("smarthome-builder-mcp"),
+    version=_version,
 )
 
 
