@@ -185,6 +185,10 @@ def _db_error(command: str, msg: dict) -> NRError:
     return _ERROR_CLASSES.get(code, ESPHomeError)(f"{command} failed: {code}: {msg.get('details')}")
 
 
+# Color codes in output lines, real (ESC) or escaped as text by esphome --dashboard ("\033[32m").
+_ANSI_RE = re.compile(r"(?:\x1b|\\033)\[[0-9;]*m")
+
+
 class _DB:
     """Device Builder /ws protocol on one connection: string message ids, replies matched by id."""
 
@@ -241,7 +245,7 @@ class _DB:
             if "error_code" in msg:
                 raise _db_error(command, msg)
             if msg.get("event") == "output":
-                lines.append(msg.get("data"))
+                lines.append(_ANSI_RE.sub("", msg.get("data") or ""))
                 if max_lines and len(lines) >= max_lines:
                     break
             elif msg.get("event") == "result":

@@ -653,3 +653,12 @@ async def test_install_job_without_id_never_matches_none_depends_on(tmp_path):
                      "firmware/get_jobs": reply([{**JOB, "depends_on": None}])})
     res = await esphome.install(_settings(tmp_path), "onju.yaml", confirm=True, session=session_for(db))
     assert res["upload_job"] is None
+
+
+async def test_stream_strips_ansi_color_codes(tmp_path):
+    # Device Builder's --dashboard output escapes ANSI as literal text ("\\033[32m").
+    raw = ["\\033[32mINFO Configuration is valid!\\033[0m", "\x1b[0;35m[C][logger:216]: Logger:\x1b[0m"]
+    db = FakeDBConn({"s": stream_result(raw, {"success": True, "code": 0})})
+    async with session_for(db)(_settings(tmp_path)) as conn:
+        lines, _ = await conn.stream("s", {}, seconds=5)
+    assert lines == ["INFO Configuration is valid!", "[C][logger:216]: Logger:"]
