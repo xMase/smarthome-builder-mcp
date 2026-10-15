@@ -25,3 +25,9 @@ def test_env_override(monkeypatch):
 def test_invalid_mode_rejected():
     with pytest.raises(ValidationError):
         Settings(deploy_mode="banana", _env_file=None)
+
+
+def test_esphome_defaults():
+    s = Settings(_env_file=None)
+    assert s.esphome_addon_slug == "5c53de3b_esphome"
+    assert s.esphome_allow_secrets is False
