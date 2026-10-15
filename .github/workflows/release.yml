@@ -1,6 +1,7 @@
 name: release
 
-# Build & publish the multi-arch image on version tags only.
+# Build & publish the multi-arch image on version tags only, then create the
+# GitHub release for the tag.
 # Native builds (no QEMU): linux/amd64 on ubuntu-24.04, linux/arm64 on
 # ubuntu-24.04-arm. Each runner pushes its arch by digest to GHCR, then a
 # merge job stitches them into one multi-arch manifest and applies the tags.
@@ -127,3 +128,19 @@ jobs:
       - name: Inspect manifest
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+
+  github-release:
+    name: GitHub release
+    runs-on: ubuntu-24.04
+    # Only after the image is on GHCR, so the release never points to a missing image.
+    needs: merge
+    permissions:
+      contents: write
+    steps:
+      - name: Create release with generated notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --generate-notes \
+            --notes "Image: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_REF_NAME#v}\`"
