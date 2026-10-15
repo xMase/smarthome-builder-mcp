@@ -20,6 +20,7 @@ services:
       MCP_TRANSPORT: "http"
       MCP_HTTP_HOST: "0.0.0.0"
       MCP_HTTP_PORT: "8080"
+      MCP_AUTH_TOKEN: "${MCP_AUTH_TOKEN}"  # required: set it in the stack's Environment variables
       BACKUP_DIR: "/data/backups"
     ports:
       - "8080:8080"

@@ -2,6 +2,7 @@
 
 from typing import Literal
 
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,3 +43,13 @@ class Settings(BaseSettings):
     mcp_transport: Literal["stdio", "http"] = "stdio"
     mcp_http_host: str = "0.0.0.0"
     mcp_http_port: int = 8080
+    mcp_auth_token: SecretStr | None = None  # required in http mode; checked in server.main()
+
+    @field_validator("mcp_auth_token", mode="before")
+    @classmethod
+    def _blank_token_is_none(cls, v):
+        # Strip copy-paste whitespace; MCP_AUTH_TOKEN="" overrides a .env token and means "none".
+        if isinstance(v, str):
+            v = v.strip()
+            return v or None
+        return v

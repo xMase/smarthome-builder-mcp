@@ -31,3 +31,19 @@ def test_esphome_defaults():
     s = Settings(_env_file=None)
     assert s.esphome_addon_slug == "5c53de3b_esphome"
     assert s.esphome_allow_secrets is False
+
+
+def test_auth_token_hidden_from_repr():
+    s = Settings(_env_file=None, mcp_auth_token="s3cret-token")
+    assert "s3cret-token" not in repr(s)
+    assert s.mcp_auth_token.get_secret_value() == "s3cret-token"
+
+
+def test_blank_auth_token_is_none():
+    assert Settings(_env_file=None, mcp_auth_token="").mcp_auth_token is None
+    assert Settings(_env_file=None, mcp_auth_token="  \n").mcp_auth_token is None
+
+
+def test_token_is_stripped():
+    s = Settings(_env_file=None, mcp_auth_token="  s3cret-token\n")
+    assert s.mcp_auth_token.get_secret_value() == "s3cret-token"

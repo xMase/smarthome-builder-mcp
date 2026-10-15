@@ -1,8 +1,11 @@
 """MCP server for smarthome-builder-mcp."""
 
+import hmac
 import json
 from importlib.metadata import PackageNotFoundError, version
 
+from mcp.server.auth.provider import AccessToken
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import MCPServer
 
 from .config import Settings
@@ -38,10 +41,32 @@ try:
 except PackageNotFoundError:  # source checkout run without installing the package
     _version = "0.0.0+unknown"
 
+class _StaticTokenVerifier:
+    """Accepts exactly one bearer token: MCP_AUTH_TOKEN."""
+
+    def __init__(self, token: str):
+        self._token = token.encode()
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        # bytes: compare_digest on a non-ASCII str raises TypeError
+        if hmac.compare_digest(token.encode(), self._token):
+            return AccessToken(token=token, client_id="static-token", scopes=[])
+        return None
+
+
+_auth = {}
+if settings.mcp_auth_token is not None:
+    _auth = {
+        "token_verifier": _StaticTokenVerifier(settings.mcp_auth_token.get_secret_value()),
+        # issuer_url is required by AuthSettings but published nowhere without an auth_server_provider.
+        "auth": AuthSettings(issuer_url="http://localhost", resource_server_url=None),
+    }
+
 mcp = MCPServer(
     "smarthome-builder-mcp",
     instructions=HA_AUTHORING_GUIDANCE,
     version=_version,
+    **_auth,
 )
 
 
@@ -544,6 +569,11 @@ async def esphome_restore_backup(backup_id: str, base_sha256: str | None = None,
 def main():
     """Console-script entry point."""
     if settings.mcp_transport == "http":
+        if settings.mcp_auth_token is None:
+            raise SystemExit(
+                "MCP_AUTH_TOKEN is required when MCP_TRANSPORT=http. Generate one with: "
+                'python -c "import secrets; print(secrets.token_urlsafe(32))"'
+            )
         mcp.run(transport="streamable-http", host=settings.mcp_http_host,
                 port=settings.mcp_http_port, json_response=True, stateless_http=True)
     else:

@@ -3,6 +3,7 @@ import importlib.metadata
 import tomllib
 from pathlib import Path
 
+import pytest
 from starlette.testclient import TestClient
 
 _INIT = {
@@ -14,6 +15,7 @@ _HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "ap
 
 
 def _fresh_server(monkeypatch, **env):
+    env.setdefault("MCP_AUTH_TOKEN", "")  # "" overrides a token in a local .env
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     import nrha_mcp.server as srv
@@ -31,16 +33,16 @@ def _capture_run(monkeypatch, srv):
     return captured
 
 
-def _post_initialize(srv, bind_host, host_header):
+def _post_initialize(srv, bind_host, host_header, headers=None):
     # Same HTTP options main() passes to run(); host only drives the SDK's DNS-rebinding check.
     app = srv.mcp.streamable_http_app(host=bind_host, json_response=True, stateless_http=True)
     with TestClient(app) as c:
-        return c.post("/mcp", json=_INIT, headers={**_HEADERS, "Host": host_header})
+        return c.post("/mcp", json=_INIT, headers={**_HEADERS, "Host": host_header, **(headers or {})})
 
 
 def test_http_mode_passes_bind_and_http_options_to_run(monkeypatch):
     srv = _fresh_server(monkeypatch, MCP_TRANSPORT="http",
-                        MCP_HTTP_HOST="0.0.0.0", MCP_HTTP_PORT="8080")
+                        MCP_HTTP_HOST="0.0.0.0", MCP_HTTP_PORT="8080", MCP_AUTH_TOKEN="t0ken")
     captured = _capture_run(monkeypatch, srv)
     srv.main()
     assert captured["transport"] == "streamable-http"
@@ -51,7 +53,7 @@ def test_http_mode_passes_bind_and_http_options_to_run(monkeypatch):
 
 def test_http_mode_localhost_bind_is_passed_through(monkeypatch):
     srv = _fresh_server(monkeypatch, MCP_TRANSPORT="http",
-                        MCP_HTTP_HOST="127.0.0.1", MCP_HTTP_PORT="9001")
+                        MCP_HTTP_HOST="127.0.0.1", MCP_HTTP_PORT="9001", MCP_AUTH_TOKEN="t0ken")
     captured = _capture_run(monkeypatch, srv)
     srv.main()
     assert captured["kwargs"] == {"host": "127.0.0.1", "port": 9001,
@@ -100,3 +102,34 @@ def test_wildcard_bind_accepts_lan_host_header(monkeypatch):
     r = _post_initialize(srv, "0.0.0.0", "192.168.200.6:8090")
     assert r.status_code == 200
     assert r.json()["result"]["serverInfo"]["version"] == importlib.metadata.version("smarthome-builder-mcp")
+
+
+def test_http_mode_without_token_refuses_to_start(monkeypatch):
+    srv = _fresh_server(monkeypatch, MCP_TRANSPORT="http")
+    captured = _capture_run(monkeypatch, srv)
+    with pytest.raises(SystemExit, match="MCP_AUTH_TOKEN is required"):
+        srv.main()
+    assert captured == {}
+
+
+def test_http_mode_blank_token_refuses_to_start(monkeypatch):
+    srv = _fresh_server(monkeypatch, MCP_TRANSPORT="http", MCP_AUTH_TOKEN="   ")
+    captured = _capture_run(monkeypatch, srv)
+    with pytest.raises(SystemExit, match="MCP_AUTH_TOKEN is required"):
+        srv.main()
+    assert captured == {}
+
+
+def test_bearer_token_required_on_http_app(monkeypatch):
+    srv = _fresh_server(monkeypatch, MCP_TRANSPORT="http", MCP_AUTH_TOKEN="s3cret-token")
+    host = "192.168.200.6:8090"
+    assert _post_initialize(srv, "0.0.0.0", host).status_code == 401
+    assert _post_initialize(srv, "0.0.0.0", host,
+                            {"Authorization": "Bearer wrong"}).status_code == 401
+    # Non-ASCII must be rejected, not crash compare_digest.
+    assert _post_initialize(srv, "0.0.0.0", host,
+                            {"Authorization": "Bearer sécret".encode()}).status_code == 401
+    assert _post_initialize(srv, "0.0.0.0", host,
+                            {"Authorization": "Bearer s3cret-token"}).status_code == 200
+    assert _post_initialize(srv, "0.0.0.0", host,
+                            {"Authorization": "bearer s3cret-token"}).status_code == 200

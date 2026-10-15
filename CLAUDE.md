@@ -88,6 +88,9 @@ So default behavior is a two-call loop: call a tool → read the preview → cal
   auth before Node-RED); `token` is for vanilla Node-RED with `adminAuth` (exchanges credentials at
   `POST /auth/token`). The HA REST tools (`ha_*`) are separate and need `HA_URL` (`:8123`) +
   `HA_TOKEN`; they no-op with a clear message if those are unset.
+- **`http` mode needs `MCP_AUTH_TOKEN`:** `main()` refuses to start without it; the SDK's bearer
+  middleware (our `_StaticTokenVerifier`) returns 401 on a missing/wrong token. Tests that expect
+  "no token" rely on `_fresh_server` setting `MCP_AUTH_TOKEN=""`, which overrides a local `.env`.
 - **Tests use `FakeNRClient`** (`tests/conftest.py`), an in-memory stand-in with the same method
   contract as `NRClient`. Unit tests call domain-module functions directly with the fake — no
   network. Add new client methods to the fake when you extend `NRClient`.
