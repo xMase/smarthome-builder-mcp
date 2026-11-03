@@ -25,8 +25,9 @@ How it stays safe:
 - **Backup-first** — every flow or ESPHome YAML change snapshots the current version to disk
   *before* writing.
 - **Optimistic locking** — flow deploys use the correct `GET → POST /flows` pattern, so a concurrent
-  edit is detected (never silently overwritten) and tab order is preserved; ESPHome writes check
-  a sha256 of the file the same way.
+  edit is detected (never silently overwritten) and tab order is preserved; the Device Builder
+  refuses `esphome_update_config` if the file changed since `esphome_get_config` read it, and
+  `esphome_restore_backup` checks a sha256 of the file.
 - **Preview, then confirm** — by default mutating tools return a diff *preview* and write nothing
   until you call them again with `confirm=true`. An ESPHome flash **always** needs `confirm=true`.
 
@@ -239,7 +240,7 @@ docker compose down -v
 ```
 
 The script:
-- Lists the registered MCP tools and asserts every expected name (23) is present.
+- Lists the registered MCP tools and asserts every expected static tool name (43) is present.
 - Calls `nr_get_flow_summary` and checks the response structure.
 - Seeds a tab + inject node via the Admin API if Node-RED is empty.
 - Calls `nr_safe_deploy` in propose mode (`confirm=false`) and asserts `deployed:false` plus a diff preview.
