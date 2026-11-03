@@ -88,11 +88,12 @@ class FakeRpc:
     def __init__(self, answers=None):
         self.calls = []
         self.answers = answers or {}
+        self.list_result = json.loads(_FIXTURE.read_text())["result"]  # one object, to detect mutation
 
     async def __call__(self, settings, method, params=None, **kw):
         self.calls.append((method, params))
         if method == "tools/list":
-            return json.loads(_FIXTURE.read_text())["result"]
+            return self.list_result
         ans = self.answers[params["name"]]
         if isinstance(ans, list):
             ans = ans.pop(0)
@@ -116,16 +117,19 @@ def test_gate_class():
 
 
 async def test_list_tools_renames_and_adds_confirm(tmp_path):
-    tools = await esphome_proxy.list_tools(_settings(tmp_path), rpc=FakeRpc())
+    fake = FakeRpc()
+    tools = await esphome_proxy.list_tools(_settings(tmp_path), rpc=fake)
     by = {t["name"]: t for t in tools}
     assert len(tools) == 21 and all(n.startswith("esphome_") for n in by)
     assert "confirm" not in by["esphome_get_config"]["inputSchema"]["properties"]
     for n in ("esphome_update_config", "esphome_install"):
         assert by[n]["inputSchema"]["properties"]["confirm"]["type"] == "boolean"
         assert "confirm=true" in by[n]["description"]
-    upstream = {t["name"]: t for t in json.loads(_FIXTURE.read_text())["result"]["tools"]}
-    assert by["esphome_install"]["inputSchema"]["required"] == upstream["install"]["inputSchema"]["required"]
-    assert "confirm" not in upstream["install"]["inputSchema"]["properties"]
+    pristine = {t["name"]: t for t in json.loads(_FIXTURE.read_text())["result"]["tools"]}
+    for t in fake.list_result["tools"]:  # the objects list_tools received are untouched
+        assert "confirm" not in t["inputSchema"]["properties"]
+        assert t["inputSchema"]["required"] == pristine[t["name"]]["inputSchema"]["required"]
+        assert by['esphome_' + t["name"]]["inputSchema"]["required"] == t["inputSchema"]["required"]
 
 
 async def test_read_tool_forwards_without_confirm(tmp_path):
@@ -238,3 +242,27 @@ async def test_backend_rendered_write_previews_call(tmp_path):
     assert out == {"preview": True, "tool": "upsert_automation", "arguments": args,
                    "requires_confirm": True}
     assert fake.calls == []
+
+
+async def test_string_confirm_is_not_confirmation(tmp_path):
+    fake = FakeRpc({"list_devices": _text("[]")})
+    out = await esphome_proxy.call(_settings(tmp_path, deploy_mode="auto"), "install",
+                                   {"configuration": "o.yaml", "confirm": "false"}, rpc=fake)
+    assert out["requires_confirm"] is True and fake.tools_called == ["list_devices"]
+
+
+async def test_failed_after_read_keeps_write_result(tmp_path):
+    fake = FakeRpc({"get_config": [_text("a: 1\n"), _text("boom: x", True)],
+                    "update_config": _text('{"ok": true}')})
+    out = await esphome_proxy.call(_settings(tmp_path, deploy_mode="auto"), "update_config",
+                                   {"configuration": "x.yaml", "content": "a: 2\n"}, rpc=fake)
+    assert out["result"] == {"ok": True} and out["backup_id"] and "warning" in out and "diff" not in out
+
+
+async def test_json_flow_yaml_is_kept_as_text(tmp_path):
+    flow = '{"esphome": {"name": "x"}}'
+    fake = FakeRpc({"get_config": [_text(flow), _text(flow)], "update_config": _text('{"ok": true}')})
+    out = await esphome_proxy.call(_settings(tmp_path, deploy_mode="auto"), "update_config",
+                                   {"configuration": "x.yaml", "content": flow}, rpc=fake)
+    assert out["backup_id"] and "diff" in out
+    assert (tmp_path / "esphome" / out["backup_id"]).read_text() == flow

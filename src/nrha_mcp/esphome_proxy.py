@@ -6,7 +6,7 @@ import json
 
 import httpx
 
-from .client import NRAuthError, NRNotFoundError
+from .client import NRAuthError, NRError, NRNotFoundError
 from .esphome import (CONNECT_TIMEOUT, REPLY_TIMEOUT, _ERROR_CLASSES, ESPHomeError, YamlBackupStore,
                       _diff, _open_ingress, check_configuration)
 
@@ -86,12 +86,16 @@ async def list_tools(settings, *, rpc=rpc) -> list[dict]:
     return out
 
 
-async def _forward(settings, rpc, tool: str, arguments: dict):
-    """tools/call upstream; return the parsed text (JSON if it parses, else the raw string)."""
+async def _forward(settings, rpc, tool: str, arguments: dict, *, raw: bool = False):
+    """tools/call upstream; return the parsed text (JSON if it parses, else the raw string).
+
+    `raw=True` keeps the text as is: file reads (YAML may be valid JSON flow style) must not be parsed."""
     res = await rpc(settings, "tools/call", {"name": tool, "arguments": arguments})
     text = "".join(c.get("text", "") for c in res.get("content", []) if c.get("type") == "text")
     if res.get("isError"):
         raise _ERROR_CLASSES.get(text.split(":", 1)[0].strip(), ESPHomeError)(text)
+    if raw:
+        return text
     try:
         return json.loads(text)
     except ValueError:
@@ -101,7 +105,8 @@ async def _forward(settings, rpc, tool: str, arguments: dict):
 async def _preview(settings, rpc, tool: str, args: dict) -> dict:
     out = {"preview": True, "tool": tool, "arguments": args, "requires_confirm": True}
     if tool == "update_config":
-        current = await _forward(settings, rpc, "get_config", {"configuration": args["configuration"]})
+        current = await _forward(settings, rpc, "get_config", {"configuration": args["configuration"]},
+                                  raw=True)
         out = {"preview": True, "tool": tool, "requires_confirm": True,
                "diff": _diff(current, args["content"], args["configuration"])}
     elif tool == "install":
@@ -117,7 +122,7 @@ async def call(settings, tool: str, arguments: dict, *, rpc=rpc,
                backups: YamlBackupStore | None = None) -> dict:
     """Forward an upstream tool call (`tool` without prefix) through the confirm/backup gate."""
     args = dict(arguments)
-    confirm = bool(args.pop("confirm", False))  # upstream schemas are closed: never forward it
+    confirm = args.pop("confirm", False) is True  # upstream schemas are closed: never forward it
     if "configuration" in args:
         check_configuration(args["configuration"], settings)
     cls = gate_class(tool)
@@ -132,7 +137,7 @@ async def call(settings, tool: str, arguments: dict, *, rpc=rpc,
     before = None
     if name:
         try:  # internal read: bypasses the secrets block, content never returned
-            before = await _forward(settings, rpc, "get_config", {"configuration": name})
+            before = await _forward(settings, rpc, "get_config", {"configuration": name}, raw=True)
         except NRNotFoundError:
             if tool != "set_secret":  # set_secret creates a missing secrets.yaml
                 raise
@@ -140,6 +145,9 @@ async def call(settings, tool: str, arguments: dict, *, rpc=rpc,
             out["backup_id"] = backups.snapshot(name, before)
     out = {"result": await _forward(settings, rpc, tool, args), **out}
     if before is not None and tool != "set_secret":
-        after = await _forward(settings, rpc, "get_config", {"configuration": name})
-        out["diff"] = _diff(before, after, name)
+        try:  # the write already happened: a failed re-read must not turn it into an error
+            after = await _forward(settings, rpc, "get_config", {"configuration": name}, raw=True)
+            out["diff"] = _diff(before, after, name)
+        except NRError as e:
+            out["warning"] = f"the write succeeded but the after-diff could not be read: {e}"
     return out

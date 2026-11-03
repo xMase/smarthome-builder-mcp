@@ -1,4 +1,5 @@
 import asyncio
+import stat
 
 import pytest
 
@@ -662,3 +663,8 @@ async def test_stream_strips_ansi_color_codes(tmp_path):
     async with session_for(db)(_settings(tmp_path)) as conn:
         lines, _ = await conn.stream("s", {}, seconds=5)
     assert lines == ["INFO Configuration is valid!", "[C][logger:216]: Logger:"]
+
+
+def test_backup_files_are_private(tmp_path):
+    bid = YamlBackupStore(str(tmp_path)).snapshot("secrets.yaml", "k: v\n")
+    assert stat.S_IMODE((tmp_path / "esphome" / bid).stat().st_mode) == 0o600

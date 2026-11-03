@@ -11,6 +11,7 @@ import contextlib
 import difflib
 import hashlib
 import itertools
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,7 +58,8 @@ class YamlBackupStore:
             ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
             path = self.dir / f"{configuration}.{ts}.yaml"
             try:
-                with open(path, "xb") as f:
+                # 0o600: backups can hold secrets.yaml in clear
+                with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
                     f.write(content.encode("utf-8"))
                 return path.name
             except FileExistsError:
