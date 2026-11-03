@@ -1,11 +1,14 @@
 """JSON-RPC transport to the Device Builder's own MCP endpoint (/api/mcp) through HA ingress."""
 import asyncio
+import copy
 import itertools
+import json
 
 import httpx
 
-from .client import NRAuthError
-from .esphome import CONNECT_TIMEOUT, REPLY_TIMEOUT, ESPHomeError, _open_ingress
+from .client import NRAuthError, NRNotFoundError
+from .esphome import (CONNECT_TIMEOUT, REPLY_TIMEOUT, _ERROR_CLASSES, ESPHomeError, YamlBackupStore,
+                      _diff, _open_ingress, check_configuration)
 
 _ids = itertools.count(1)
 
@@ -47,3 +50,96 @@ async def rpc(settings, method: str, params: dict | None = None, *, ha_connect=N
                         "reconnect this MCP server (/mcp) or start a new session.")
         raise ESPHomeError(f"Device Builder MCP error: {message}")
     return reply.get("result") or {}
+
+
+PREFIX = "esphome_"
+NO_CONFIRM = frozenset({
+    "list_devices", "get_config", "validate_config", "get_job", "cancel_job", "compile",
+    "search_components", "get_component", "get_config_components", "search_boards",
+    "list_secret_names", "list_automations", "get_available_automations", "get_automation_docs"})
+DEPLOY_MODE_CONFIRM = frozenset({
+    "update_config", "add_component", "create_device", "upsert_automation", "delete_automation"})
+
+_CONFIRM_PROP = {"type": "boolean", "default": False,
+                 "description": "Set true to run this write; without it the call only previews."}
+
+
+def gate_class(tool: str) -> str:
+    """`none` forwards as is; `deploy_mode` needs confirm in propose mode; anything else always does."""
+    if tool in NO_CONFIRM:
+        return "none"
+    return "deploy_mode" if tool in DEPLOY_MODE_CONFIRM else "always"
+
+
+async def list_tools(settings, *, rpc=rpc) -> list[dict]:
+    """Upstream tools renamed `esphome_<n>`; gated ones get a `confirm` property (upstream dicts untouched)."""
+    out = []
+    for t in (await rpc(settings, "tools/list")).get("tools", []):
+        cls = gate_class(t["name"])
+        schema = copy.deepcopy(t.get("inputSchema") or {"type": "object"})
+        desc = t.get("description", "")
+        if cls != "none":
+            schema.setdefault("properties", {})["confirm"] = dict(_CONFIRM_PROP)
+            desc += ("\nWrites: needs confirm=true (per DEPLOY_MODE)." if cls == "deploy_mode"
+                     else "\nNeeds confirm=true always, also with DEPLOY_MODE=auto.")
+        out.append({"name": PREFIX + t["name"], "description": desc, "inputSchema": schema})
+    return out
+
+
+async def _forward(settings, rpc, tool: str, arguments: dict):
+    """tools/call upstream; return the parsed text (JSON if it parses, else the raw string)."""
+    res = await rpc(settings, "tools/call", {"name": tool, "arguments": arguments})
+    text = "".join(c.get("text", "") for c in res.get("content", []) if c.get("type") == "text")
+    if res.get("isError"):
+        raise _ERROR_CLASSES.get(text.split(":", 1)[0].strip(), ESPHomeError)(text)
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+
+async def _preview(settings, rpc, tool: str, args: dict) -> dict:
+    out = {"preview": True, "tool": tool, "arguments": args, "requires_confirm": True}
+    if tool == "update_config":
+        current = await _forward(settings, rpc, "get_config", {"configuration": args["configuration"]})
+        out = {"preview": True, "tool": tool, "requires_confirm": True,
+               "diff": _diff(current, args["content"], args["configuration"])}
+    elif tool == "install":
+        rows = await _forward(settings, rpc, "list_devices", {})
+        row = next((r for r in rows if r.get("configuration") == args["configuration"]), None)
+        out["device"] = row
+        if row and row.get("state") == "offline" and args.get("port") in (None, "OTA"):
+            out["warning"] = "The device is offline; an OTA install will fail until it is reachable."
+    return out
+
+
+async def call(settings, tool: str, arguments: dict, *, rpc=rpc,
+               backups: YamlBackupStore | None = None) -> dict:
+    """Forward an upstream tool call (`tool` without prefix) through the confirm/backup gate."""
+    args = dict(arguments)
+    confirm = bool(args.pop("confirm", False))  # upstream schemas are closed: never forward it
+    if "configuration" in args:
+        check_configuration(args["configuration"], settings)
+    cls = gate_class(tool)
+    if cls == "none":
+        return {"result": await _forward(settings, rpc, tool, args)}
+    if (cls == "always" or settings.deploy_mode == "propose") and not confirm:
+        return await _preview(settings, rpc, tool, args)
+
+    backups = backups or YamlBackupStore(settings.backup_dir)
+    out: dict = {}
+    name = "secrets.yaml" if tool == "set_secret" else None if tool == "install" else args.get("configuration")
+    before = None
+    if name:
+        try:  # internal read: bypasses the secrets block, content never returned
+            before = await _forward(settings, rpc, "get_config", {"configuration": name})
+        except NRNotFoundError:
+            if tool != "set_secret":  # set_secret creates a missing secrets.yaml
+                raise
+        if before is not None:
+            out["backup_id"] = backups.snapshot(name, before)
+    out = {"result": await _forward(settings, rpc, tool, args), **out}
+    if before is not None and tool != "set_secret":
+        after = await _forward(settings, rpc, "get_config", {"configuration": name})
+        out["diff"] = _diff(before, after, name)
+    return out

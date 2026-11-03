@@ -66,3 +66,175 @@ async def test_rpc_timeout_is_esphome_error(tmp_path):
 
     with pytest.raises(ESPHomeError, match="ReadTimeout"):
         await _rpc(tmp_path, handler)
+
+
+# ---- tool list and gated call -------------------------------------------------
+
+from pathlib import Path
+
+from nrha_mcp.client import NRConflictError, NRNotFoundError
+
+_FIXTURE = Path(__file__).parent / "fixtures" / "esphome_mcp_tools_list_1.25.0.json"
+_ERR = object()
+
+
+def _text(text, is_error=False):
+    return {"content": [{"type": "text", "text": text}], "isError": is_error}
+
+
+class FakeRpc:
+    """Records (method, params); answers tools/call per tool name (a value or a list consumed in order)."""
+
+    def __init__(self, answers=None):
+        self.calls = []
+        self.answers = answers or {}
+
+    async def __call__(self, settings, method, params=None, **kw):
+        self.calls.append((method, params))
+        if method == "tools/list":
+            return json.loads(_FIXTURE.read_text())["result"]
+        ans = self.answers[params["name"]]
+        if isinstance(ans, list):
+            ans = ans.pop(0)
+        return ans
+
+    @property
+    def tools_called(self):
+        return [p["name"] for m, p in self.calls if m == "tools/call"]
+
+
+def _backups(tmp_path):
+    d = tmp_path / "esphome"
+    return list(d.iterdir()) if d.is_dir() else []
+
+
+def test_gate_class():
+    g = esphome_proxy.gate_class
+    assert [g("get_config"), g("compile"), g("update_config"), g("install"),
+            g("set_secret"), g("delete_device")] == ["none", "none", "deploy_mode", "always",
+                                                     "always", "always"]
+
+
+async def test_list_tools_renames_and_adds_confirm(tmp_path):
+    tools = await esphome_proxy.list_tools(_settings(tmp_path), rpc=FakeRpc())
+    by = {t["name"]: t for t in tools}
+    assert len(tools) == 21 and all(n.startswith("esphome_") for n in by)
+    assert "confirm" not in by["esphome_get_config"]["inputSchema"]["properties"]
+    for n in ("esphome_update_config", "esphome_install"):
+        assert by[n]["inputSchema"]["properties"]["confirm"]["type"] == "boolean"
+        assert "confirm=true" in by[n]["description"]
+    upstream = {t["name"]: t for t in json.loads(_FIXTURE.read_text())["result"]["tools"]}
+    assert by["esphome_install"]["inputSchema"]["required"] == upstream["install"]["inputSchema"]["required"]
+    assert "confirm" not in upstream["install"]["inputSchema"]["properties"]
+
+
+async def test_read_tool_forwards_without_confirm(tmp_path):
+    rows = [{"configuration": "a.yaml", "state": "online"}]
+    fake = FakeRpc({"list_devices": _text(json.dumps(rows))})
+    assert await esphome_proxy.call(_settings(tmp_path), "list_devices", {}, rpc=fake) == {"result": rows}
+    assert fake.calls == [("tools/call", {"name": "list_devices", "arguments": {}})]
+
+
+async def test_non_json_text_returned_as_text(tmp_path):
+    fake = FakeRpc({"get_config": _text("esphome:\n  name: x\n")})
+    out = await esphome_proxy.call(_settings(tmp_path), "get_config", {"configuration": "x.yaml"}, rpc=fake)
+    assert out == {"result": "esphome:\n  name: x\n"}
+
+
+async def test_confirm_stripped_for_no_confirm_tool(tmp_path):
+    fake = FakeRpc({"compile": _text('{"job_id": "1"}')})
+    await esphome_proxy.call(_settings(tmp_path), "compile",
+                             {"configuration": "x.yaml", "confirm": True}, rpc=fake)
+    assert fake.calls[0][1]["arguments"] == {"configuration": "x.yaml"}
+
+
+async def test_secrets_blocked_before_network(tmp_path):
+    fake = FakeRpc()
+    with pytest.raises(ESPHomeError):
+        await esphome_proxy.call(_settings(tmp_path), "get_config",
+                                 {"configuration": "secrets.yaml"}, rpc=fake)
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize("code,exc", [("not_found", NRNotFoundError),
+                                      ("precondition_failed", NRConflictError),
+                                      ("invalid_args", ESPHomeError)])
+async def test_is_error_maps_code(tmp_path, code, exc):
+    msg = f"{code}: Device 'x.yaml' not found"
+    fake = FakeRpc({"get_config": _text(msg, True)})
+    with pytest.raises(exc, match="Device 'x.yaml'"):
+        await esphome_proxy.call(_settings(tmp_path), "get_config", {"configuration": "x.yaml"}, rpc=fake)
+
+
+async def test_update_config_preview_in_propose(tmp_path):
+    fake = FakeRpc({"get_config": _text("a: 1\n")})
+    out = await esphome_proxy.call(_settings(tmp_path), "update_config",
+                                   {"configuration": "x.yaml", "content": "a: 2\n"}, rpc=fake)
+    assert out["requires_confirm"] is True and "-a: 1" in out["diff"] and "+a: 2" in out["diff"]
+    assert fake.tools_called == ["get_config"] and _backups(tmp_path) == []
+
+
+async def test_update_config_preview_missing_file(tmp_path):
+    fake = FakeRpc({"get_config": _text("not_found: nope", True)})
+    with pytest.raises(NRNotFoundError):
+        await esphome_proxy.call(_settings(tmp_path), "update_config",
+                                 {"configuration": "x.yaml", "content": "a: 2\n"}, rpc=fake)
+    assert fake.tools_called == ["get_config"] and _backups(tmp_path) == []
+
+
+async def test_update_config_auto_runs_with_backup_and_diff(tmp_path):
+    fake = FakeRpc({"get_config": [_text("a: 1\n"), _text("a: 2\n")], "update_config": _text('{"ok": true}')})
+    out = await esphome_proxy.call(_settings(tmp_path, deploy_mode="auto"), "update_config",
+                                   {"configuration": "x.yaml", "content": "a: 2\n"}, rpc=fake)
+    assert fake.tools_called == ["get_config", "update_config", "get_config"]
+    assert len(_backups(tmp_path)) == 1
+    assert out["result"] == {"ok": True} and out["backup_id"] and "+a: 2" in out["diff"]
+
+
+async def test_install_always_needs_confirm(tmp_path):
+    rows = [{"configuration": "o.yaml", "state": "offline"}, {"configuration": "p.yaml", "state": "online"}]
+    fake = FakeRpc({"list_devices": _text(json.dumps(rows)), "install": _text('{"job_id": "9"}')})
+    s = _settings(tmp_path, deploy_mode="auto")
+    out = await esphome_proxy.call(s, "install", {"configuration": "o.yaml"}, rpc=fake)
+    assert out["requires_confirm"] is True and out["device"] == rows[0] and out["warning"]
+    assert fake.tools_called == ["list_devices"]
+    out = await esphome_proxy.call(s, "install", {"configuration": "p.yaml"}, rpc=fake)
+    assert "warning" not in out
+    fake.calls.clear()
+    out = await esphome_proxy.call(s, "install", {"configuration": "o.yaml", "confirm": True}, rpc=fake)
+    assert fake.tools_called == ["install"] and out == {"result": {"job_id": "9"}}
+    assert _backups(tmp_path) == []
+
+
+async def test_unknown_tool_always_gated(tmp_path):
+    fake = FakeRpc()
+    out = await esphome_proxy.call(_settings(tmp_path, deploy_mode="auto"), "delete_device",
+                                   {"name": "x"}, rpc=fake)
+    assert out["requires_confirm"] is True and fake.calls == []
+
+
+async def test_set_secret_backs_up_secrets_without_returning_them(tmp_path):
+    fake = FakeRpc({"get_config": _text("wifi: hunter2\n"), "set_secret": _text('{"ok": true}')})
+    out = await esphome_proxy.call(_settings(tmp_path), "set_secret",
+                                   {"name": "k", "value": "v", "confirm": True}, rpc=fake)
+    assert fake.tools_called == ["get_config", "set_secret"]
+    assert fake.calls[0][1]["arguments"] == {"configuration": "secrets.yaml"}
+    assert len(_backups(tmp_path)) == 1 and out["backup_id"]
+    assert "hunter2" not in json.dumps(out)
+
+
+async def test_set_secret_creates_missing_secrets_file(tmp_path):
+    fake = FakeRpc({"get_config": _text("not_found: no file", True), "set_secret": _text('{"ok": true}')})
+    out = await esphome_proxy.call(_settings(tmp_path), "set_secret",
+                                   {"name": "k", "value": "v", "confirm": True}, rpc=fake)
+    assert fake.tools_called == ["get_config", "set_secret"] and "backup_id" not in out
+    assert _backups(tmp_path) == []
+
+
+async def test_backend_rendered_write_previews_call(tmp_path):
+    args = {"configuration": "x.yaml", "location": "on_boot", "automation": {}}
+    fake = FakeRpc()
+    out = await esphome_proxy.call(_settings(tmp_path), "upsert_automation", dict(args), rpc=fake)
+    assert out == {"preview": True, "tool": "upsert_automation", "arguments": args,
+                   "requires_confirm": True}
+    assert fake.calls == []

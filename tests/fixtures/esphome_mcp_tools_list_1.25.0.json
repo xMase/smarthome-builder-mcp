@@ -1,0 +1,675 @@
+{
+ "jsonrpc": "2.0",
+ "id": 1,
+ "result": {
+  "tools": [
+   {
+    "name": "list_devices",
+    "description": "List configured ESPHome devices with their online state, address and deployed firmware version. Scalar fields only; per-device lists such as loaded integrations come from get_config_components.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {},
+     "required": [],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "get_config",
+    "description": "Read a device's YAML configuration, or secrets.yaml (its values then enter this conversation).",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "configuration": {
+       "type": "string",
+       "description": "Device YAML filename, e.g. 'living-room.yaml' (from list_devices)."
+      }
+     },
+     "required": [
+      "configuration"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "update_config",
+    "description": "Replace a device's YAML configuration with new content. Read it with get_config first, pass that text as expected, and change only what is needed; run validate_config or compile afterwards. Add or change an automation with upsert_automation instead. The previous text stays in the dashboard's version history.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "configuration": {
+       "type": "string",
+       "description": "Device YAML filename, e.g. 'living-room.yaml' (from list_devices)."
+      },
+      "content": {
+       "type": "string",
+       "description": "The complete new YAML."
+      },
+      "expected": {
+       "type": "string",
+       "description": "The text get_config returned, verbatim; the write is refused with precondition_failed if the file changed since, so nothing is overwritten unseen."
+      }
+     },
+     "required": [
+      "configuration",
+      "content",
+      "expected"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "add_component",
+    "description": "Add a catalog component to a device config and save it. Use search_components to find the id and get_component for its fields.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "configuration": {
+       "type": "string",
+       "description": "Device YAML filename, e.g. 'living-room.yaml' (from list_devices)."
+      },
+      "component_id": {
+       "type": "string",
+       "description": "Catalog id, e.g. 'sensor.dht' or 'wifi'."
+      },
+      "fields": {
+       "type": "object",
+       "description": "Config values keyed by field name; nested blocks are nested objects.",
+       "additionalProperties": true
+      }
+     },
+     "required": [
+      "configuration",
+      "component_id"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "validate_config",
+    "description": "Validate a device config with esphome and return the last output lines (truncated says whether earlier lines were dropped; esphome's concealed values show as <removed>).",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "configuration": {
+       "type": "string",
+       "description": "Device YAML filename, e.g. 'living-room.yaml' (from list_devices)."
+      },
+      "tail_lines": {
+       "type": "integer",
+       "description": "Output lines to keep from the end.",
+       "minimum": 0,
+       "maximum": 1000,
+       "default": 50
+      }
+     },
+     "required": [
+      "configuration"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "compile",
+    "description": "Queue a firmware compile for a device. Returns a job id to poll with get_job.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "configuration": {
+       "type": "string",
+       "description": "Device YAML filename, e.g. 'living-room.yaml' (from list_devices)."
+      }
+     },
+     "required": [
+      "configuration"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "install",
+    "description": "Compile and install firmware on a device. Returns the compile job id and the dependent upload job id; poll both with get_job. An offline device gets the update queued for its next wake (deferred, upload_job_id null). A flash has no undo: the device runs whatever compiles, so read and validate the config first.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "configuration": {
+       "type": "string",
+       "description": "Device YAML filename, e.g. 'living-room.yaml' (from list_devices)."
+      },
+      "port": {
+       "type": "string",
+       "description": "'OTA' (default), a serial port, or an IP/hostname."
+      }
+     },
+     "required": [
+      "configuration"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "get_job",
+    "description": "Get a firmware job's status, progress, exit code and the last output lines.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "job_id": {
+       "type": "string",
+       "description": "Firmware job id returned by compile or install."
+      },
+      "tail_lines": {
+       "type": "integer",
+       "description": "Output lines to keep from the end.",
+       "minimum": 0,
+       "maximum": 1000,
+       "default": 50
+      }
+     },
+     "required": [
+      "job_id"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "cancel_job",
+    "description": "Cancel a queued or running firmware job. Returns the job's status right after the request: a queued job is cancelled at once, a running one is signalled and may still finish, so poll get_job for its final status. A null status means the job already left the retained history.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "job_id": {
+       "type": "string",
+       "description": "Firmware job id returned by compile or install."
+      }
+     },
+     "required": [
+      "job_id"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "search_components",
+    "description": "Search the ESPHome component catalog by name or keyword. total above the number of rows returned means the query was capped; narrow it.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "query": {
+       "type": "string",
+       "description": "Search text."
+      },
+      "limit": {
+       "type": "integer",
+       "description": "Max results.",
+       "minimum": 1,
+       "maximum": 100,
+       "default": 20
+      }
+     },
+     "required": [
+      "query"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "get_component",
+    "description": "Get a component's documentation: description, docs URL and every config field with type, description, required flag and allowed values. default_value is what ESPHome uses when the key is absent; an omitted flag is false. Advanced and YAML-only fields are omitted unless include_advanced is true.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "component_id": {
+       "type": "string",
+       "description": "Catalog id, e.g. 'sensor.dht' or 'wifi'."
+      },
+      "platform": {
+       "type": "string",
+       "description": "Target platform (esp32, esp8266, ...) to resolve platform defaults."
+      },
+      "board_id": {
+       "type": "string",
+       "description": "Board id from search_boards; resolves the chip variant's defaults, which platform alone cannot."
+      },
+      "include_advanced": {
+       "type": "boolean",
+       "description": "Include advanced and YAML-only fields.",
+       "default": false
+      }
+     },
+     "required": [
+      "component_id"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "get_config_components",
+    "description": "List the catalog components a device config used as of its last scan (every save rescans), with a short description and docs URL for each. Call get_component for the fields of any of them.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "configuration": {
+       "type": "string",
+       "description": "Device YAML filename, e.g. 'living-room.yaml' (from list_devices)."
+      }
+     },
+     "required": [
+      "configuration"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "search_boards",
+    "description": "Search the board catalog by name or chip; returns board ids for create_device. total above the number of rows returned means the query was capped; narrow it.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "query": {
+       "type": "string",
+       "description": "Search text, e.g. 'esp32-c3' or 'nodemcu'."
+      },
+      "limit": {
+       "type": "integer",
+       "description": "Max results.",
+       "minimum": 1,
+       "maximum": 100,
+       "default": 20
+      }
+     },
+     "required": [
+      "query"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "list_secret_names",
+    "description": "List the secret names defined in secrets.yaml. Reference one in YAML as '!secret <name>'.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {},
+     "required": [],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "set_secret",
+    "description": "Create one secret in secrets.yaml, the only way to change that file, or replace one with overwrite. Replacing is not recoverable: secrets.yaml is kept out of version history. Reference the secret in YAML as '!secret <name>'.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string",
+       "description": "Secret name, e.g. 'wifi_password'."
+      },
+      "value": {
+       "type": "string",
+       "description": "The secret value."
+      },
+      "overwrite": {
+       "type": "boolean",
+       "description": "Replace an existing value; the old one is lost.",
+       "default": false
+      }
+     },
+     "required": [
+      "name",
+      "value"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "create_device",
+    "description": "Create a new device YAML with the wizard. Wi-Fi is written as '!secret wifi_ssid' and '!secret wifi_password' (set them first with set_secret if list_secret_names lacks them); it takes no Wi-Fi arguments. Returns the new configuration filename.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string",
+       "description": "Device name (its hostname), e.g. 'living-room-sensor'."
+      },
+      "friendly_name": {
+       "type": "string",
+       "description": "Human readable name."
+      },
+      "board_id": {
+       "type": "string",
+       "description": "Board id from search_boards, e.g. 'esp32dev'."
+      }
+     },
+     "required": [
+      "name"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "list_automations",
+    "description": "List the automations a device config contains (scripts, intervals, api actions, on_* triggers, light effects) with their YAML, line range and location. Add or change one with upsert_automation; remove one with delete_automation.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "configuration": {
+       "type": "string",
+       "description": "Device YAML filename, e.g. 'living-room.yaml' (from list_devices)."
+      }
+     },
+     "required": [
+      "configuration"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "get_available_automations",
+    "description": "The triggers, actions, conditions, scripts and component instances this device's config makes available for automations, by id. Call this before upsert_automation: ESPHome has no automation block; a trigger is an on_* key under esphome (device level) or under the component entry it belongs to, and scripts and intervals are top-level script and interval lists. An omitted list is empty.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "configuration": {
+       "type": "string",
+       "description": "Device YAML filename, e.g. 'living-room.yaml' (from list_devices)."
+      }
+     },
+     "required": [
+      "configuration"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "get_automation_docs",
+    "description": "Documentation for automation building blocks: the fields each trigger, action, condition, light effect or filter takes. An omitted flag is false; advanced and YAML-only fields are omitted unless include_advanced is true.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "refs": {
+       "type": "array",
+       "description": "Building blocks to document.",
+       "maxItems": 50,
+       "items": {
+        "type": "object",
+        "properties": {
+         "type": {
+          "type": "string",
+          "description": "The building block kind.",
+          "enum": [
+           "triggers",
+           "actions",
+           "conditions",
+           "light_effects",
+           "filters"
+          ]
+         },
+         "id": {
+          "type": "string",
+          "description": "Its id from get_available_automations, e.g. 'light.turn_on'.",
+          "minLength": 1
+         }
+        },
+        "required": [
+         "type",
+         "id"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "include_advanced": {
+       "type": "boolean",
+       "description": "Include advanced and YAML-only fields.",
+       "default": false
+      }
+     },
+     "required": [
+      "refs"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "upsert_automation",
+    "description": "Insert or replace one automation in a device config and save it; the backend renders the YAML in the right place, so never splice YAML by hand. An insert must not replace existing YAML; to replace, pass the automation's raw_yaml from list_automations as expected. The tool checks the shape, not the fields: esphome does that, and the reply's validation is the validate_config result for the saved file; when validation is null the run did not finish inside the call budget, so run validate_config. Repair what esphome reports by replacing the automation, with expected from a fresh list_automations.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "configuration": {
+       "type": "string",
+       "description": "Device YAML filename, e.g. 'living-room.yaml' (from list_devices)."
+      },
+      "location": {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "description": "The location kind.",
+         "enum": [
+          "script",
+          "interval",
+          "component_on",
+          "component_action",
+          "device_on",
+          "light_effect",
+          "api_action"
+         ]
+        },
+        "component_id": {
+         "type": "string",
+         "description": "component_on, component_action, light_effect: the component instance id, devices[].id from get_available_automations (not the catalog type in devices[].component_id).",
+         "minLength": 1
+        },
+        "trigger": {
+         "type": "string",
+         "description": "device_on, component_on: the bare on_* YAML key, e.g. 'on_press'.",
+         "minLength": 1
+        },
+        "index": {
+         "type": "integer",
+         "description": "interval, light_effect: list position; the current list length appends. device_on, component_on: only for a list-shaped handler, from list_automations.",
+         "minimum": 0
+        },
+        "id": {
+         "type": "string",
+         "description": "script: the script id.",
+         "minLength": 1
+        },
+        "field": {
+         "type": "string",
+         "description": "component_action: the action-list field as a dot path from the instance, e.g. 'turn_on_action' or 'valves.0.set_action'.",
+         "minLength": 1
+        },
+        "action_name": {
+         "type": "string",
+         "description": "api_action: the action's name.",
+         "minLength": 1
+        }
+       },
+       "required": [
+        "kind"
+       ],
+       "additionalProperties": false,
+       "description": "Where the automation lives: a location from list_automations, or a new one whose keys follow its kind."
+      },
+      "automation": {
+       "type": "object",
+       "properties": {
+        "trigger_params": {
+         "type": "object",
+         "description": "The block's own keys: a trigger's fields; interval's interval period; script's mode and parameters; api_action's variables; for light_effect exactly one key, the effect id mapped to its params; nothing for component_action.",
+         "additionalProperties": true
+        },
+        "actions": {
+         "type": "array",
+         "description": "The actions to run, in order.",
+         "items": {
+          "type": "object",
+          "properties": {
+           "action_id": {
+            "type": "string",
+            "description": "Action id from get_available_automations, e.g. 'light.turn_on'; an uncatalogued action needs unknown.",
+            "minLength": 1
+           },
+           "params": {
+            "type": "object",
+            "description": "The action's fields, from get_automation_docs.",
+            "additionalProperties": true
+           },
+           "children": {
+            "type": "object",
+            "description": "Control flow branches: a branch name such as 'then' or 'else' mapped to a list of actions shaped like this item.",
+            "additionalProperties": true
+           },
+           "conditions": {
+            "type": "array",
+            "description": "The boolean gate of an if, while or wait_until.",
+            "items": {
+             "type": "object",
+             "properties": {
+              "condition_id": {
+               "type": "string",
+               "description": "Condition id from get_available_automations.",
+               "minLength": 1
+              },
+              "params": {
+               "type": "object",
+               "description": "The condition's fields, from get_automation_docs.",
+               "additionalProperties": true
+              },
+              "children": {
+               "type": "array",
+               "description": "A combinator's sub-conditions, each shaped like this item.",
+               "items": {
+                "type": "object",
+                "description": "A condition.",
+                "additionalProperties": true
+               }
+              }
+             },
+             "required": [
+              "condition_id"
+             ],
+             "additionalProperties": false
+            }
+           },
+           "branches": {
+            "type": "array",
+            "description": "A choose action's ordered choices, each {conditions: [...], actions: [...]}; its default list is children.else.",
+            "items": {
+             "type": "object",
+             "description": "A choose branch.",
+             "additionalProperties": true
+            }
+           },
+           "unknown": {
+            "type": "boolean",
+            "description": "True for an uncatalogued action, such as an external component's: raw_body is written verbatim and params, children and conditions are not used."
+           },
+           "raw_body": {
+            "description": "The uncatalogued action's YAML body, verbatim."
+           }
+          },
+          "required": [
+           "action_id"
+          ],
+          "additionalProperties": false
+         }
+        }
+       },
+       "required": [
+        "actions"
+       ],
+       "additionalProperties": false,
+       "description": "The automation tree; the location decides the trigger, so no trigger_id."
+      },
+      "expected": {
+       "type": "string",
+       "description": "When replacing: the automation's raw_yaml exactly as list_automations returned it."
+      }
+     },
+     "required": [
+      "configuration",
+      "location",
+      "automation"
+     ],
+     "additionalProperties": false
+    }
+   },
+   {
+    "name": "delete_automation",
+    "description": "Remove one automation from a device config and save it; pass the location and raw_yaml from list_automations. A location is positional, so the delete is refused with precondition_failed if the automation changed or moved since it was listed. The reply's validation is as on upsert_automation.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "configuration": {
+       "type": "string",
+       "description": "Device YAML filename, e.g. 'living-room.yaml' (from list_devices)."
+      },
+      "location": {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "description": "The location kind.",
+         "enum": [
+          "script",
+          "interval",
+          "component_on",
+          "component_action",
+          "device_on",
+          "light_effect",
+          "api_action"
+         ]
+        },
+        "component_id": {
+         "type": "string",
+         "description": "component_on, component_action, light_effect: the component instance id, devices[].id from get_available_automations (not the catalog type in devices[].component_id).",
+         "minLength": 1
+        },
+        "trigger": {
+         "type": "string",
+         "description": "device_on, component_on: the bare on_* YAML key, e.g. 'on_press'.",
+         "minLength": 1
+        },
+        "index": {
+         "type": "integer",
+         "description": "interval, light_effect: list position; the current list length appends. device_on, component_on: only for a list-shaped handler, from list_automations.",
+         "minimum": 0
+        },
+        "id": {
+         "type": "string",
+         "description": "script: the script id.",
+         "minLength": 1
+        },
+        "field": {
+         "type": "string",
+         "description": "component_action: the action-list field as a dot path from the instance, e.g. 'turn_on_action' or 'valves.0.set_action'.",
+         "minLength": 1
+        },
+        "action_name": {
+         "type": "string",
+         "description": "api_action: the action's name.",
+         "minLength": 1
+        }
+       },
+       "required": [
+        "kind"
+       ],
+       "additionalProperties": false,
+       "description": "The automation's location as returned by list_automations."
+      },
+      "expected": {
+       "type": "string",
+       "description": "The automation's raw_yaml exactly as list_automations returned it."
+      }
+     },
+     "required": [
+      "configuration",
+      "location",
+      "expected"
+     ],
+     "additionalProperties": false
+    }
+   }
+  ]
+ }
+}
