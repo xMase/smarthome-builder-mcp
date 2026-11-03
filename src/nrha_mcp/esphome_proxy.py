@@ -113,8 +113,8 @@ async def _preview(settings, rpc, tool: str, args: dict) -> dict:
         rows = await _forward(settings, rpc, "list_devices", {})
         row = next((r for r in rows if r.get("configuration") == args["configuration"]), None)
         out["device"] = row
-        # Live rows keep state "unknown" for an offline device and set offline_seconds.
-        offline = row and (row.get("state") == "offline" or row.get("offline_seconds") is not None)
+        # Live rows set offline_seconds only for an unreachable device (state stays "unknown").
+        offline = row and row.get("offline_seconds") is not None
         if offline and args.get("port") in (None, "OTA"):
             out["warning"] = "The device is offline; an OTA install will fail until it is reachable."
     return out

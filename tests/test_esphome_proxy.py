@@ -196,7 +196,8 @@ async def test_update_config_auto_runs_with_backup_and_diff(tmp_path):
 
 
 async def test_install_always_needs_confirm(tmp_path):
-    rows = [{"configuration": "o.yaml", "state": "offline"}, {"configuration": "p.yaml", "state": "online"}]
+    rows = [{"configuration": "o.yaml", "state": "unknown", "offline_seconds": 12.5},
+            {"configuration": "p.yaml", "state": "online", "offline_seconds": None}]
     fake = FakeRpc({"list_devices": _text(json.dumps(rows)), "install": _text('{"job_id": "9"}')})
     s = _settings(tmp_path, deploy_mode="auto")
     out = await esphome_proxy.call(s, "install", {"configuration": "o.yaml"}, rpc=fake)
@@ -283,3 +284,11 @@ async def test_install_warns_when_live_offline_signal(tmp_path):
     out = await esphome_proxy.call(_settings(tmp_path, deploy_mode="auto"), "install",
                                    {"configuration": "o.yaml"}, rpc=fake)
     assert out["warning"]
+
+
+async def test_install_no_warning_for_online_device(tmp_path):
+    rows = [{"configuration": "p.yaml", "state": "online", "offline_seconds": None}]
+    fake = FakeRpc({"list_devices": _text(json.dumps(rows))})
+    out = await esphome_proxy.call(_settings(tmp_path, deploy_mode="auto"), "install",
+                                   {"configuration": "p.yaml"}, rpc=fake)
+    assert "warning" not in out
