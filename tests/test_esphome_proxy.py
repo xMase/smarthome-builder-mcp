@@ -266,3 +266,20 @@ async def test_json_flow_yaml_is_kept_as_text(tmp_path):
                                    {"configuration": "x.yaml", "content": flow}, rpc=fake)
     assert out["backup_id"] and "diff" in out
     assert (tmp_path / "esphome" / out["backup_id"]).read_text() == flow
+
+
+async def test_update_config_propose_with_confirm_runs_with_one_backup(tmp_path):
+    fake = FakeRpc({"get_config": [_text("a: 1\n"), _text("a: 2\n")], "update_config": _text('{"ok": true}')})
+    await esphome_proxy.call(_settings(tmp_path, deploy_mode="propose"), "update_config",
+                             {"configuration": "x.yaml", "content": "a: 2\n", "confirm": True}, rpc=fake)
+    assert fake.tools_called == ["get_config", "update_config", "get_config"]
+    assert len(_backups(tmp_path)) == 1
+
+
+async def test_install_warns_when_live_offline_signal(tmp_path):
+    # Live Device Builder rows: offline devices keep state "unknown" and carry offline_seconds.
+    rows = [{"configuration": "o.yaml", "state": "unknown", "offline_seconds": 12.5}]
+    fake = FakeRpc({"list_devices": _text(json.dumps(rows))})
+    out = await esphome_proxy.call(_settings(tmp_path, deploy_mode="auto"), "install",
+                                   {"configuration": "o.yaml"}, rpc=fake)
+    assert out["warning"]

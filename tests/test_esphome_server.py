@@ -113,3 +113,12 @@ async def test_static_tool_still_works(monkeypatch, tmp_path):
     monkeypatch.setattr(srv.settings, "backup_dir", str(tmp_path))
     res = await srv.mcp.call_tool("esphome_list_backups", {})
     assert json.loads(_text(res)) == {"backups": []}
+
+
+async def test_list_tools_malformed_upstream_tool_static_only(monkeypatch, caplog):
+    _ha(monkeypatch)
+    _fake_list(monkeypatch, tools=[{"name": "esphome_bad", "description": "x", "inputSchema": [1]}])
+    with caplog.at_level(logging.WARNING):
+        names = {t.name for t in await srv.mcp.list_tools()}
+    assert names == await _static_names()
+    assert any("unavailable" in r.getMessage() for r in caplog.records)

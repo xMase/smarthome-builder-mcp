@@ -80,16 +80,16 @@ class _Server(MCPServer):
             return tools
         try:
             upstream = await esphome_proxy.list_tools(settings)
-        except Exception as e:  # noqa: BLE001 - upstream down must not hide the static tools
+            taken = {t.name for t in tools}
+            return tools + [
+                MCPTool(name=u["name"], description=u["description"], input_schema=u["inputSchema"])
+                for u in upstream if u["name"] not in taken]
+        except Exception as e:  # noqa: BLE001 - upstream down or malformed must not hide the static tools
             _log.warning("ESPHome upstream tool list unavailable: %s: %s", type(e).__name__, e)
             return tools
-        taken = {t.name for t in tools}
-        return tools + [
-            MCPTool(name=u["name"], description=u["description"], input_schema=u["inputSchema"])
-            for u in upstream if u["name"] not in taken]
 
     async def call_tool(self, name, arguments, context=None):
-        if name in self._tool_manager._tools or not name.startswith(esphome_proxy.PREFIX):
+        if self._tool_manager.get_tool(name) is not None or not name.startswith(esphome_proxy.PREFIX):
             return await super().call_tool(name, arguments, context)
         text = _esphome_unset() or await _wrap(
             lambda: esphome_proxy.call(settings, name[len(esphome_proxy.PREFIX):], arguments))
@@ -523,15 +523,14 @@ async def esphome_logs(configuration: str, seconds: float = 10, max_lines: int =
 
 @mcp.tool()
 async def esphome_list_backups(configuration: str | None = None) -> str:
-    """List local ESPHome YAML backups (newest first), written before every esphome write."""
+    """List local ESPHome YAML backups (newest first), saved before each confirmed config write."""
     return await _wrap(lambda: esphome.list_backups(settings, configuration))
 
 
 @mcp.tool()
 async def esphome_restore_backup(backup_id: str, base_sha256: str | None = None,
                                  confirm: bool = False) -> str:
-    """Restore a local ESPHome backup through the same write path as esphome_update_config
-    (diff preview, backup of the current file, conflict check)."""
+    """Restore a local ESPHome backup (diff preview, backup of the current file, conflict check)."""
     return _esphome_unset() or await _wrap(lambda: esphome.restore_backup(
         settings, backup_id, base_sha256=base_sha256, confirm=confirm))
 

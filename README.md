@@ -118,9 +118,11 @@ now needs `expected` (the text read with `esphome_get_config`). Three gate class
 - **No confirm**: read-only tools and `esphome_compile` (it cancels queued or running jobs of the
   same device, including the upload of an earlier install).
 - **Writes** (e.g. `esphome_update_config`, `esphome_restore_backup`) follow `DEPLOY_MODE`: a preview
-  unless `confirm=true`; the current file is saved to `BACKUP_DIR/esphome/` first.
+  unless `confirm=true`; the current file is saved to `BACKUP_DIR/esphome/` first. A confirmed
+  `esphome_set_secret` writes a plaintext copy of `secrets.yaml` (mode 0600) there, so whoever
+  copies or syncs `BACKUP_DIR` holds the secrets in clear.
 - **Always confirm** (`esphome_install`, `esphome_set_secret`): `confirm=true` is needed also with
-  `DEPLOY_MODE=auto`.
+  `DEPLOY_MODE=auto`. Any unknown or new upstream tool is treated this way too.
 
 A standalone ESPHome install with a password can also be connected to directly:
 `claude mcp add --transport http device-builder http://<host>:6052/api/mcp`.
@@ -144,9 +146,9 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 | `HA_WS_BLOCK_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` will always refuse (additive to the built-in floor; `confirm=true` cannot override). |
 | `HA_WS_READ_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` treats as read-only (additive to the built-in defaults), so they run immediately without `confirm=true`. |
 | `ESPHOME_ADDON_SLUG` | `5c53de3b_esphome` | Slug of the ESPHome Device Builder add-on used by the `esphome_*` tools (reached through HA ingress with `HA_URL` + `HA_TOKEN`; the token must belong to an HA admin user if the add-on panel is admin-only) |
-| `ESPHOME_ALLOW_SECRETS` | `false` | `true` lets `esphome_get_config` / `esphome_update_config` / `esphome_restore_backup` touch `secrets.yaml` / `secrets.yml` (their values then pass through the conversation). The block on direct reads/writes of `secrets.yaml` is not a security boundary: a device YAML can `!include secrets.yaml`, and `esphome_validate_config` output then shows the values |
+| `ESPHOME_ALLOW_SECRETS` | `false` | `true` lets the `esphome_*` tools that take a `configuration` (e.g. `esphome_get_config`, `esphome_update_config`, `esphome_restore_backup`) name `secrets.yaml` / `secrets.yml` (their values then pass through the conversation). The block on direct reads/writes of `secrets.yaml` is not a security boundary: a device YAML can `!include secrets.yaml`, and `esphome_validate_config` output then shows the values |
 | `DEPLOY_MODE` | `propose` | `propose` (preview, write on `confirm=true`) or `auto` |
-| `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written |
+| `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written (ESPHome YAML backups go to `esphome/` below it; `esphome_set_secret` backups hold `secrets.yaml` in plaintext) |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` (streamable-HTTP) |
 | `MCP_HTTP_HOST` / `MCP_HTTP_PORT` | `0.0.0.0` / `8080` | Bind address/port in `http` mode |
 | `MCP_AUTH_TOKEN` | — | Bearer token, **required in `http` mode** (the server refuses to start without it). Clients send `Authorization: Bearer <token>`. Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
