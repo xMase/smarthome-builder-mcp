@@ -46,7 +46,7 @@ Plain requests to your AI assistant; it picks the tools and shows you a preview 
   YAML, shows the diff, validates it, backs up and writes it, then flashes over the air and follows
   the compile/upload job until "OTA successful".
 - *"Which ESPHome devices are offline or have changes that were never flashed?"* →
-  `esphome_list_devices`.
+  `esphome_list_devices` (generated from the Device Builder).
 
 ## Why this and not Home Assistant's built-in MCP server
 
@@ -80,7 +80,7 @@ than the author's are largely unexplored.
 | **Modules & testing** | `nr_get_installed_modules`, `nr_install_module`, `nr_inject` |
 | **Home Assistant** (read) | `ha_search_entities` (live entity lookup by id/name), `ha_get_state` (current state + attributes), `ha_get_services` (discover domains/services for authoring), `ha_get_entity_history`, `ha_get_entity_statistics`, `ha_list_ha_nodes`, `ha_get_server_config`, `ha_check_nodered_integration` |
 | **Home Assistant** (act) | `ha_call_service` — call any HA service (turn on/off, press buttons, nudge covers, set helpers) with a tiered safety gate (see below); `ha_ws_command` — send a raw HA WebSocket command (e.g. entity-registry edits); reads run immediately, writes need `confirm=true`; a `call_service` command obeys the shared service floor |
-| **ESPHome** (Device Builder add-on via HA ingress; needs `HA_URL` + `HA_TOKEN`) | `esphome_list_devices`, `esphome_get_config`, `esphome_validate`, `esphome_logs` (read); `esphome_update_config` and `esphome_restore_backup` (diff preview → `confirm=true` per `DEPLOY_MODE`, local backup first, sha256 conflict check); `esphome_compile` (no confirm; cancels queued/running compile/install jobs of the same configuration, including an earlier install's upload), `esphome_install` (**always** `confirm=true`, also in `auto`; offline device → deferred flash), `esphome_job_status`, `esphome_cancel_job`, `esphome_list_backups`. `secrets.yaml` is blocked unless `ESPHOME_ALLOW_SECRETS=true` |
+| **ESPHome** (Device Builder add-on via HA ingress; needs `HA_URL` + `HA_TOKEN`) | Static: `esphome_logs`, `esphome_list_backups`, `esphome_restore_backup`. All other `esphome_<tool>` tools are generated from the Device Builder (≥ 1.15) `/api/mcp` (e.g. `esphome_list_devices`, `esphome_get_config`, `esphome_update_config`, `esphome_validate_config`, `esphome_compile`, `esphome_install`, `esphome_get_job`, `esphome_cancel_job`) and follow upstream parameters. `secrets.yaml` is blocked unless `ESPHOME_ALLOW_SECRETS=true` |
 
 ## How the safety model works
 
@@ -110,16 +110,20 @@ deploy gate above (HA service calls have no undo, so they cannot be backed up):
   service, so it is a guardrail against direct mistakes, not a sandbox.
 
 **ESPHome (`esphome_*`)** has its own gate too; it talks to the Device Builder add-on, not to the
-Node-RED deploy path:
+Node-RED deploy path. Tools are generated from the Device Builder's own MCP server (Device Builder
+≥ 1.15, `/api/mcp`) and named `esphome_<tool>`. Renames from earlier versions: `esphome_validate` is
+now `esphome_validate_config`, `esphome_job_status` is now `esphome_get_job`; `esphome_update_config`
+now needs `expected` (the text read with `esphome_get_config`). Three gate classes:
 
-- **YAML writes** (`esphome_update_config`, `esphome_restore_backup`) follow `DEPLOY_MODE`: a diff
-  preview plus a `base_sha256` unless `confirm=true`. Before writing, the current file is saved to
-  `BACKUP_DIR/esphome/` and re-read; if it changed since the preview, nothing is written.
-- **Flashing** (`esphome_install`) **always** needs `confirm=true`, also with `DEPLOY_MODE=auto`. The
-  preview shows the device state and versions, and warns when an offline device would get a deferred
-  flash (it compiles now and flashes when the device comes back online).
-- `esphome_compile` needs no confirm, but it cancels queued or running jobs of the same device,
-  including the upload of an earlier `esphome_install`.
+- **No confirm**: read-only tools and `esphome_compile` (it cancels queued or running jobs of the
+  same device, including the upload of an earlier install).
+- **Writes** (e.g. `esphome_update_config`, `esphome_restore_backup`) follow `DEPLOY_MODE`: a preview
+  unless `confirm=true`; the current file is saved to `BACKUP_DIR/esphome/` first.
+- **Always confirm** (`esphome_install`, `esphome_set_secret`): `confirm=true` is needed also with
+  `DEPLOY_MODE=auto`.
+
+A standalone ESPHome install with a password can also be connected to directly:
+`claude mcp add --transport http device-builder http://<host>:6052/api/mcp`.
 
 ## Configuration
 
@@ -140,7 +144,7 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 | `HA_WS_BLOCK_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` will always refuse (additive to the built-in floor; `confirm=true` cannot override). |
 | `HA_WS_READ_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` treats as read-only (additive to the built-in defaults), so they run immediately without `confirm=true`. |
 | `ESPHOME_ADDON_SLUG` | `5c53de3b_esphome` | Slug of the ESPHome Device Builder add-on used by the `esphome_*` tools (reached through HA ingress with `HA_URL` + `HA_TOKEN`; the token must belong to an HA admin user if the add-on panel is admin-only) |
-| `ESPHOME_ALLOW_SECRETS` | `false` | `true` lets `esphome_get_config` / `esphome_update_config` / `esphome_restore_backup` touch `secrets.yaml` / `secrets.yml` (their values then pass through the conversation). The block on direct reads/writes of `secrets.yaml` is not a security boundary: a device YAML can `!include secrets.yaml`, and `esphome_validate` output then shows the values |
+| `ESPHOME_ALLOW_SECRETS` | `false` | `true` lets `esphome_get_config` / `esphome_update_config` / `esphome_restore_backup` touch `secrets.yaml` / `secrets.yml` (their values then pass through the conversation). The block on direct reads/writes of `secrets.yaml` is not a security boundary: a device YAML can `!include secrets.yaml`, and `esphome_validate_config` output then shows the values |
 | `DEPLOY_MODE` | `propose` | `propose` (preview, write on `confirm=true`) or `auto` |
 | `BACKUP_DIR` | `./backups` | Where pre-deploy snapshots are written |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` (streamable-HTTP) |

@@ -305,68 +305,6 @@ async def test_ha_auth_drop_maps_to_esphome_error(tmp_path):
             pass
 
 
-DEV = {"configuration": "onju.yaml", "name": "onju", "address": "onju.local",
-       "current_version": "2026.9.1", "update_available": True, "has_pending_changes": True,
-       "runtime_state": {"state": "online", "ip_addresses": ["192.168.1.50"],
-                         "deployed_version": "2026.8.0", "queued_update": False}}
-
-
-async def test_list_devices_flattens(tmp_path):
-    db = FakeDBConn({"devices/list": reply({"configured": [DEV], "importable": []})})
-    res = await esphome.list_devices(_settings(tmp_path), session=session_for(db))
-    assert res["server_version"] == "1.14.9"
-    assert res["devices"] == [{
-        "configuration": "onju.yaml", "name": "onju", "state": "online", "address": "onju.local",
-        "ip_addresses": ["192.168.1.50"], "current_version": "2026.9.1",
-        "deployed_version": "2026.8.0", "update_available": True,
-        "has_pending_changes": True, "queued_update": False}]
-
-
-async def test_list_devices_fields_inside_runtime_state(tmp_path):
-    dev = {"configuration": "a.yaml", "name": "a",
-           "runtime_state": {"state": "offline", "update_available": False, "has_pending_changes": False}}
-    db = FakeDBConn({"devices/list": reply({"configured": [dev]})})
-    (d,) = (await esphome.list_devices(_settings(tmp_path), session=session_for(db)))["devices"]
-    assert d["state"] == "offline" and d["update_available"] is False and d["has_pending_changes"] is False
-
-
-@pytest.mark.parametrize("shape", ["esphome:\n  name: onju\n", {"content": "esphome:\n  name: onju\n"}])
-async def test_get_config_returns_content_and_sha(tmp_path, shape):
-    db = FakeDBConn({"devices/get_config": reply(shape)})
-    res = await esphome.get_config(_settings(tmp_path), "onju.yaml", session=session_for(db))
-    assert res == {"configuration": "onju.yaml", "content": "esphome:\n  name: onju\n",
-                   "sha256": esphome._sha("esphome:\n  name: onju\n")}
-    assert sent(db, "devices/get_config") == [{"configuration": "onju.yaml"}]
-
-
-async def test_get_config_rejects_before_connecting(tmp_path):
-    def never(settings):
-        raise AssertionError("must not connect")
-    with pytest.raises(ESPHomeError, match="ESPHOME_ALLOW_SECRETS"):
-        await esphome.get_config(_settings(tmp_path), "secrets.yaml", session=never)
-
-
-async def test_validate_success_never_shows_secrets(tmp_path):
-    db = FakeDBConn({"devices/validate": stream_result(["INFO ok"], {"success": True, "code": 0})})
-    res = await esphome.validate(_settings(tmp_path), "onju.yaml", session=session_for(db))
-    assert res == {"configuration": "onju.yaml", "success": True, "code": 0, "output_tail": ["INFO ok"]}
-    assert sent(db, "devices/validate") == [{"configuration": "onju.yaml"}]
-
-
-async def test_validate_failure_and_tail(tmp_path, monkeypatch):
-    monkeypatch.setattr(esphome, "STREAM_TAIL", 2)
-    db = FakeDBConn({"devices/validate": stream_result(["a", "b", "ERROR x"], {"success": False, "code": 2})})
-    res = await esphome.validate(_settings(tmp_path), "onju.yaml", session=session_for(db))
-    assert res["success"] is False and res["code"] == 2 and res["output_tail"] == ["b", "ERROR x"]
-
-
-async def test_validate_timeout(tmp_path, monkeypatch):
-    monkeypatch.setattr(esphome, "VALIDATE_TIMEOUT", 0.05)
-    db = FakeDBConn({"devices/validate": stream_open(["a"]), **STOP})
-    with pytest.raises(ESPHomeError, match="did not finish"):
-        await esphome.validate(_settings(tmp_path), "onju.yaml", session=session_for(db))
-
-
 async def test_logs_stop_at_max_lines(tmp_path):
     db = FakeDBConn({"devices/logs": stream_open(["l1", "l2", "l3"]), **STOP})
     res = await esphome.logs(_settings(tmp_path), "onju.yaml", seconds=5, max_lines=2,
@@ -533,95 +471,6 @@ async def test_restore_secrets_backup_blocked(tmp_path):
                                      session=lambda s: (_ for _ in ()).throw(AssertionError()))
 
 
-JOB = {"job_id": "c1", "configuration": "onju.yaml", "job_type": "install", "status": "queued",
-       "exit_code": None, "error": None, "progress": None, "depends_on": None,
-       "is_deferred_install": False}
-UPLOAD = {**JOB, "job_id": "u1", "job_type": "upload", "depends_on": "c1"}
-
-
-async def test_compile_returns_job_at_once(tmp_path):
-    db = FakeDBConn({"firmware/compile": reply({**JOB, "job_type": "compile"})})
-    res = await esphome.compile_firmware(_settings(tmp_path), "onju.yaml", session=session_for(db))
-    assert res["job"]["job_id"] == "c1" and res["job"]["job_type"] == "compile"
-    assert sent(db, "firmware/compile") == [{"configuration": "onju.yaml"}]
-
-
-@pytest.mark.parametrize("mode", ["propose", "auto"])
-async def test_install_always_previews_without_confirm(tmp_path, mode):
-    db = FakeDBConn({"devices/list": reply({"configured": [DEV]})})
-    res = await esphome.install(_settings(tmp_path, deploy_mode=mode), "onju.yaml",
-                                session=session_for(db))
-    assert res["preview"] is True and res["requires_confirm"] is True
-    assert res["device"]["state"] == "online" and "warning" not in res
-    assert sent(db, "firmware/install") == []
-
-
-async def test_install_offline_warns_deferred(tmp_path):
-    dev = {**DEV, "runtime_state": {**DEV["runtime_state"], "state": "offline"}}
-    db = FakeDBConn({"devices/list": reply({"configured": [dev]})})
-    res = await esphome.install(_settings(tmp_path), "onju.yaml", session=session_for(db))
-    assert "DEFERRED" in res["warning"]
-
-
-async def test_install_unknown_device(tmp_path):
-    db = FakeDBConn({"devices/list": reply({"configured": [DEV]})})
-    with pytest.raises(NRNotFoundError):
-        await esphome.install(_settings(tmp_path), "other.yaml", session=session_for(db))
-
-
-@pytest.mark.parametrize("jobs_shape", [lambda js: js, lambda js: {"jobs": js}])
-async def test_install_confirm_finds_upload_job(tmp_path, jobs_shape):
-    db = FakeDBConn({"devices/list": reply({"configured": [DEV]}),
-                     "firmware/install": reply(JOB),
-                     "firmware/get_jobs": reply(jobs_shape([JOB, UPLOAD]))})
-    res = await esphome.install(_settings(tmp_path), "onju.yaml", confirm=True, session=session_for(db))
-    assert res["compile_job"]["job_id"] == "c1" and res["upload_job"]["job_id"] == "u1"
-    assert res["is_deferred_install"] is False
-    assert sent(db, "firmware/install") == [{"configuration": "onju.yaml", "port": "OTA"}]
-    assert sent(db, "firmware/get_jobs") == [{"configuration": "onju.yaml"}]
-
-
-async def test_job_status_terminal(tmp_path):
-    done = {**JOB, "status": "completed", "exit_code": 0}
-    db = FakeDBConn({"firmware/get_job": reply(done),
-                     "firmware/follow_job": stream_result(["a", "b", "c"], {"status": "completed",
-                                                                            "exit_code": 0})})
-    res = await esphome.job_status(_settings(tmp_path), "c1", tail_lines=2, session=session_for(db))
-    assert res["done"] is True and res["status"] == "completed" and res["output_tail"] == ["b", "c"]
-    assert sent(db, "devices/stop_stream") == []
-
-
-async def test_job_status_running_stops_after_replay(tmp_path, monkeypatch):
-    monkeypatch.setattr(esphome, "REPLAY_SECONDS", 0.05)
-    db = FakeDBConn({"firmware/get_job": reply({**JOB, "status": "running", "progress": 40}),
-                     "firmware/follow_job": stream_open(["Compiling ..."]), **STOP})
-    res = await esphome.job_status(_settings(tmp_path), "c1", session=session_for(db))
-    assert res["done"] is False and res["progress"] == 40 and res["output_tail"] == ["Compiling ..."]
-    assert sent(db, "devices/stop_stream") == [{"stream_id": "2"}]
-
-
-async def test_job_status_wait_capped(tmp_path, monkeypatch):
-    monkeypatch.setattr(esphome, "JOB_MAX_WAIT", 0.05)
-    monkeypatch.setattr(esphome, "REPLAY_SECONDS", 0.01)
-    db = FakeDBConn({"firmware/get_job": reply({**JOB, "status": "running"}),
-                     "firmware/follow_job": stream_open([]), **STOP})
-    res = await esphome.job_status(_settings(tmp_path), "c1", wait_seconds=10_000, session=session_for(db))
-    assert res["done"] is False
-
-
-async def test_job_status_unknown(tmp_path):
-    db = FakeDBConn({"firmware/get_job": lambda a: [{"error_code": "not_found", "details": "no job"}]})
-    with pytest.raises(NRNotFoundError):
-        await esphome.job_status(_settings(tmp_path), "nope", session=session_for(db))
-
-
-async def test_cancel_job(tmp_path):
-    db = FakeDBConn({"firmware/cancel": reply({"cancelled": True})})
-    res = await esphome.cancel_job(_settings(tmp_path), "c1", session=session_for(db))
-    assert res == {"job_id": "c1", "result": {"cancelled": True}}
-    assert sent(db, "firmware/cancel") == [{"job_id": "c1"}]
-
-
 async def test_ha_connect_refused_maps_to_esphome_error(tmp_path):
     async def refuse(settings):
         raise ConnectionRefusedError("nope")
@@ -637,23 +486,6 @@ async def test_stream_stop_failure_keeps_lines(tmp_path):
     async with session_for(db)(_settings(tmp_path)) as conn:
         lines, final = await conn.stream("s", {}, seconds=0.05)
     assert lines == ["a", "b"] and final is None
-
-
-async def test_install_get_jobs_error_keeps_compile_job(tmp_path):
-    db = FakeDBConn({"devices/list": reply({"configured": [DEV]}),
-                     "firmware/install": reply(JOB),
-                     "firmware/get_jobs": lambda a: [{"error_code": "internal", "details": "x"}]})
-    res = await esphome.install(_settings(tmp_path), "onju.yaml", confirm=True, session=session_for(db))
-    assert res["compile_job"]["job_id"] == "c1" and res["upload_job"] is None
-    assert "upload job" in res["warning"]
-
-
-async def test_install_job_without_id_never_matches_none_depends_on(tmp_path):
-    db = FakeDBConn({"devices/list": reply({"configured": [DEV]}),
-                     "firmware/install": reply({**JOB, "job_id": None}),
-                     "firmware/get_jobs": reply([{**JOB, "depends_on": None}])})
-    res = await esphome.install(_settings(tmp_path), "onju.yaml", confirm=True, session=session_for(db))
-    assert res["upload_job"] is None
 
 
 async def test_stream_strips_ansi_color_codes(tmp_path):

@@ -49,8 +49,9 @@ Three layers, each in `src/nrha_mcp/`:
    `edit.py` (node create/patch/wire/delete), `deploy.py` (the deploy safety gate), `backup.py`
    (`BackupStore`: snapshot/list/restore), `modules.py` (palette install), `ha.py` (HA-node
    recognition + a *separate* `HARestClient` for the HA REST API at `:8123`), `esphome.py` (ESPHome Device Builder via HA ingress; own websocket
-   transport; bypasses `NRClient` and `deploy.commit`, with its own preview/confirm/backup gate in
-   `update_config` and `install`).
+   transport for `esphome_logs` and the local YAML backups; bypasses `NRClient` and `deploy.commit`),
+   `esphome_proxy.py` (JSON-RPC transport to the Device Builder's `/api/mcp` plus the gated proxy that
+   `server.py`'s `_Server` uses to generate the other `esphome_<tool>` tools at list time).
 
 3. **`client.py` — `NRClient`.** The single path to Node-RED's Admin API (httpx, API v2). Owns auth
    (precedence: `NR_TOKEN` → `NR_USER`/`NR_PASS` per `NR_AUTH` → none) and optimistic locking

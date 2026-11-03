@@ -90,11 +90,7 @@ class YamlBackupStore:
 
 CONNECT_TIMEOUT = 15.0     # HA handshake + Device Builder websocket open
 REPLY_TIMEOUT = 30.0       # one request/reply on /ws
-VALIDATE_TIMEOUT = 180.0
 LOGS_MAX_SECONDS = 60
-JOB_MAX_WAIT = 300
-REPLAY_SECONDS = 2.0       # follow_job has no end-of-replay marker
-STREAM_TAIL = 200
 _WS_MAX_SIZE = 16 * 2**20  # HA ingress proxy limit
 
 
@@ -284,50 +280,9 @@ async def _session(settings, *, ha_connect=None, db_connect=None):
 
 # --- Tools: read and check --------------------------------------------------
 
-_DEVICE_FIELDS = ("update_available", "has_pending_changes")
-_RUNTIME_FIELDS = ("state", "ip_addresses", "deployed_version", "queued_update")
-
-
-def _flat_device(d: dict) -> dict:
-    # shortcut: shapes read from Device Builder 1.14.9 source, not observed live; Task 7 confirms.
-    rs = d.get("runtime_state") or {}
-    out = {"configuration": d.get("configuration"), "name": d.get("name"),
-           "address": d.get("address"), "current_version": d.get("current_version")}
-    for k in _RUNTIME_FIELDS:
-        out[k] = rs.get(k, d.get(k))
-    for k in _DEVICE_FIELDS:
-        out[k] = d.get(k, rs.get(k))
-    return out
-
 
 def _content(res) -> str:
     return res if isinstance(res, str) else (res or {}).get("content", "")
-
-
-async def list_devices(settings, *, session=None) -> dict:
-    async with (session or _session)(settings) as db:
-        res = await db.call("devices/list")
-        version = db.server_info.get("server_version")
-    return {"server_version": version,
-            "devices": [_flat_device(d) for d in (res or {}).get("configured", [])]}
-
-
-async def get_config(settings, configuration, *, session=None) -> dict:
-    check_configuration(configuration, settings)
-    async with (session or _session)(settings) as db:
-        content = _content(await db.call("devices/get_config", configuration=configuration))
-    return {"configuration": configuration, "content": content, "sha256": _sha(content)}
-
-
-async def validate(settings, configuration, *, session=None) -> dict:
-    check_configuration(configuration, settings)
-    async with (session or _session)(settings) as db:
-        lines, final = await db.stream("devices/validate", {"configuration": configuration},
-                                       seconds=VALIDATE_TIMEOUT, tail=STREAM_TAIL)
-    if final is None:
-        raise ESPHomeError(f"validate of {configuration} did not finish in {VALIDATE_TIMEOUT}s")
-    return {"configuration": configuration, "success": bool(final.get("success")),
-            "code": final.get("code"), "output_tail": lines}
 
 
 async def logs(settings, configuration, *, seconds=10, max_lines=200, session=None) -> dict:
@@ -404,85 +359,3 @@ async def restore_backup(settings, backup_id, *, base_sha256=None, confirm=False
     configuration, content = store.read(backup_id)
     return await update_config(settings, configuration, content, base_sha256=base_sha256,
                                confirm=confirm, session=session, backups=store)
-
-
-# --- Tools: firmware jobs ----------------------------------------------------
-
-TERMINAL = {"completed", "failed", "cancelled"}
-_JOB_FIELDS = ("job_id", "configuration", "job_type", "status", "exit_code", "error",
-               "progress", "depends_on", "is_deferred_install")
-
-
-def _job(j: dict) -> dict:
-    return {k: (j or {}).get(k) for k in _JOB_FIELDS}
-
-
-def _job_list(res) -> list[dict]:
-    # shortcut: 1.14.9 get_jobs shape not observed live (list or {"jobs": [...]}); Task 7 confirms.
-    return res if isinstance(res, list) else (res or {}).get("jobs", [])
-
-
-def _check_job_id(job_id) -> str:
-    if not isinstance(job_id, str) or not job_id.strip():
-        raise ESPHomeError("job_id is required (from esphome_compile / esphome_install).")
-    return job_id
-
-
-async def compile_firmware(settings, configuration, *, session=None) -> dict:
-    check_configuration(configuration, settings)
-    async with (session or _session)(settings) as db:
-        job = await db.call("firmware/compile", configuration=configuration)
-    return {"job": _job(job)}
-
-
-async def install(settings, configuration, *, port="OTA", confirm=False, session=None) -> dict:
-    """Compile + flash. Always needs confirm=true, whatever DEPLOY_MODE says."""
-    check_configuration(configuration, settings)
-    async with (session or _session)(settings) as db:
-        devices = (await db.call("devices/list") or {}).get("configured", [])
-        dev = next((_flat_device(d) for d in devices if d.get("configuration") == configuration), None)
-        if dev is None:
-            raise NRNotFoundError(f"no ESPHome device with configuration {configuration}")
-        if not confirm:
-            out = {"preview": True, "device": dev, "port": port, "requires_confirm": True,
-                   "hint": "re-call with confirm=true to compile and flash "
-                           "(always required, also with DEPLOY_MODE=auto)."}
-            if port == "OTA" and dev["state"] == "offline":
-                out["warning"] = ("device is offline: the install becomes DEFERRED — it compiles now "
-                                  "and flashes automatically when the device comes back online.")
-            return out
-        job = await db.call("firmware/install", configuration=configuration, port=port)
-        try:
-            jobs = _job_list(await db.call("firmware/get_jobs", configuration=configuration))
-        except NRError:
-            jobs = None
-    cid = (job or {}).get("job_id")
-    upload = next((j for j in jobs if cid is not None and j.get("depends_on") == cid), None) if jobs else None
-    out = {"compile_job": _job(job), "upload_job": _job(upload) if upload else None,
-           "is_deferred_install": bool((job or {}).get("is_deferred_install"))}
-    if jobs is None:
-        out["warning"] = "the compile job started, but the upload job could not be looked up; use esphome_job_status."
-    return out
-
-
-async def job_status(settings, job_id, *, wait_seconds=0, tail_lines=50, session=None) -> dict:
-    _check_job_id(job_id)
-    wait = min(max(float(wait_seconds), 0.0), JOB_MAX_WAIT)
-    tail = min(max(int(tail_lines), 1), 2000)
-    async with (session or _session)(settings) as db:
-        job = await db.call("firmware/get_job", job_id=job_id)
-        if not job:
-            raise NRNotFoundError(f"job {job_id} not found")
-        lines, final = await db.stream("firmware/follow_job", {"job_id": job_id},
-                                       seconds=max(wait, REPLAY_SECONDS), tail=tail)
-        if final is not None and job.get("status") not in TERMINAL:
-            job = await db.call("firmware/get_job", job_id=job_id) or job
-    out = _job(job)
-    return {**out, "done": out["status"] in TERMINAL, "output_tail": lines}
-
-
-async def cancel_job(settings, job_id, *, session=None) -> dict:
-    _check_job_id(job_id)
-    async with (session or _session)(settings) as db:
-        res = await db.call("firmware/cancel", job_id=job_id)
-    return {"job_id": job_id, "result": res}
