@@ -142,6 +142,16 @@ Auth precedence: `NR_TOKEN` → `NR_USER`/`NR_PASS` (via `NR_AUTH` mode: `basic`
 
 ## Install & run
 
+### Requirements
+
+- **Python 3.11+** (or Docker, for option B).
+- **Node-RED** with its Admin API reachable from this server (`NR_URL`).
+- **[ha-mcp](https://github.com/homeassistant-ai/ha-mcp)**, connected in the same MCP client, to
+  author flows with Home Assistant nodes: it resolves the entity ids (`ha_search`). The other
+  Node-RED tools and the ESPHome tools work without it.
+- **For the ESPHome tools:** Home Assistant with the ESPHome Device Builder add-on (≥ 1.15), and
+  `HA_URL` + `HA_TOKEN` of an admin user.
+
 ### A. Local, stdio (Claude Code on the same machine)
 
 Until it's published to PyPI, install from source into a virtualenv:
