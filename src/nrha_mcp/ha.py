@@ -1,13 +1,12 @@
 """Home Assistant awareness for Node-RED flows.
 
 Recognizes node-red-contrib-home-assistant-websocket node types and provides
-a minimal REST client for live entity discovery.
+a minimal REST client used for the HA reachability ping.
 """
 
 import httpx
-from datetime import datetime, timedelta, timezone
 
-from .client import NRClient, NRError
+from .client import NRClient
 from .config import Settings
 
 # Node types provided by node-red-contrib-home-assistant-websocket
@@ -18,62 +17,6 @@ HA_NODE_TYPES = {
     "ha-webhook", "ha-fire-event", "ha-get-entities", "ha-wait-until", "ha-sensor",
     "ha-button", "ha-switch", "ha-binary-sensor", "ha-number", "ha-select", "ha-text",
 }
-
-
-# --- Service-call safety (ha_call_service) -------------------------------
-
-# Catastrophic services: hardcoded floor, ADDITIVE only (HA_BLOCK_SERVICES can
-# extend it, never shrink it), and confirm=true cannot override a floor block.
-# Finalized for Home Assistant OS (Supervisor restore services present).
-CATASTROPHIC_FLOOR = {
-    "homeassistant.stop", "homeassistant.restart",
-    "hassio.host_reboot", "hassio.host_shutdown", "hassio.supervisor_restart",
-    "hassio.restore_full", "hassio.restore_partial",
-    "recorder.purge", "recorder.purge_entities",
-}
-
-# Sensitive services gated behind confirm=true when HA_CONFIRM_SERVICES is unset.
-DEFAULT_CONFIRM = {
-    "lock.unlock", "lock.open",
-    "alarm_control_panel.alarm_disarm", "alarm_control_panel.alarm_trigger",
-    "update.install",
-}
-
-
-def _parse_service_list(raw: str) -> set[str]:
-    return {t.strip().lower() for t in (raw or "").split(",") if t.strip()}
-
-
-def _block_set(settings) -> set[str]:
-    return CATASTROPHIC_FLOOR | _parse_service_list(settings.ha_block_services)
-
-
-def _confirm_set(settings) -> set[str]:
-    if settings.ha_confirm_services is None:
-        return set(DEFAULT_CONFIRM)
-    return _parse_service_list(settings.ha_confirm_services)
-
-
-def _in_set(domain: str, service: str, s: set[str]) -> bool:
-    return f"{domain}.{service}".lower() in s or f"{domain}.*".lower() in s
-
-
-def _service_tier(domain: str, service: str, settings) -> str:
-    """Return "blocked" | "confirm" | "direct"; precedence block > confirm > direct."""
-    if _in_set(domain, service, _block_set(settings)):
-        return "blocked"
-    if _in_set(domain, service, _confirm_set(settings)):
-        return "confirm"
-    return "direct"
-
-
-def effective_policy(settings) -> dict:
-    """Resolved policy for observability (nr_diagnostics)."""
-    return {
-        "blocked": sorted(_block_set(settings)),
-        "confirm": sorted(_confirm_set(settings)),
-        "confirm_source": "default" if settings.ha_confirm_services is None else "configured",
-    }
 
 
 def _entity_of(node: dict) -> str | None:
@@ -108,7 +51,7 @@ async def get_server_config(client: NRClient) -> dict:
 
 
 class HARestClient:
-    """Minimal Home Assistant REST client for entity discovery."""
+    """Minimal Home Assistant REST client (reachability ping only)."""
 
     def __init__(self, settings: Settings):
         self._client = httpx.AsyncClient(
@@ -117,34 +60,6 @@ class HARestClient:
             timeout=15.0,
         )
 
-    async def get_states(self) -> list[dict]:
-        r = await self._client.get("/api/states")
-        r.raise_for_status()
-        return r.json()
-
-    async def get_state(self, entity_id: str) -> dict:
-        r = await self._client.get(f"/api/states/{entity_id}")
-        r.raise_for_status()
-        return r.json()
-
-    async def get_services(self) -> list[dict]:
-        r = await self._client.get("/api/services")
-        r.raise_for_status()
-        return r.json()
-
-    async def call_service(self, domain: str, service: str, body: dict) -> list[dict]:
-        r = await self._client.post(f"/api/services/{domain}/{service}", json=body)
-        r.raise_for_status()
-        return r.json()  # array of state objects that changed (often [])
-
-    async def get_history(self, entity_id: str, start_iso: str, end_iso: str | None = None) -> list:
-        params = {"filter_entity_id": entity_id, "minimal_response": "", "no_attributes": ""}
-        if end_iso:
-            params["end_time"] = end_iso
-        r = await self._client.get(f"/api/history/period/{start_iso}", params=params)
-        r.raise_for_status()
-        return r.json()
-
     async def ping(self) -> dict:
         r = await self._client.get("/api/")
         r.raise_for_status()
@@ -152,144 +67,3 @@ class HARestClient:
 
     async def close(self):
         await self._client.aclose()
-
-
-async def search_entities(ha_client, query: str, limit: int = 20) -> dict:
-    """Find HA entities whose entity_id or friendly_name contains `query` (case-insensitive)."""
-    q = query.lower()
-    states = await ha_client.get_states()
-    out = []
-    for s in states:
-        eid = s.get("entity_id", "")
-        fname = s.get("attributes", {}).get("friendly_name", "") or ""
-        if q in eid.lower() or q in fname.lower():
-            out.append({
-                "entity_id": eid,
-                "friendly_name": fname,
-                "state": s.get("state"),
-                "domain": eid.split(".")[0] if "." in eid else "",
-            })
-            if len(out) >= limit:
-                break
-    return {"results": out, "total": len(out), "query": query}
-
-
-async def get_entity_state(ha_client, entity_id: str) -> dict:
-    """Get the current state and attributes of a Home Assistant entity."""
-    s = await ha_client.get_state(entity_id)
-    return {
-        "entity_id": s.get("entity_id", entity_id),
-        "state": s.get("state"),
-        "attributes": s.get("attributes", {}),
-    }
-
-
-async def call_service(ha_client, settings, domain, service,
-                       entity_id=None, data=None, confirm=False) -> dict:
-    """Call a HA service with tiered safety. Returns a trimmed result, or a preview
-    dict when a sensitive service is called without confirm=true."""
-    body = dict(data or {})
-    if entity_id is not None:
-        if "entity_id" in body and body["entity_id"] != entity_id:
-            raise NRError(
-                f"entity_id conflict: param {entity_id!r} but data has {body['entity_id']!r}")
-        body["entity_id"] = entity_id
-
-    called = f"{domain}.{service}"
-    tier = _service_tier(domain, service, settings)
-
-    if tier == "blocked":
-        raise NRError(
-            f"{called} is in the catastrophic block list and cannot be executed; "
-            "confirm=true does not override it.")
-
-    if tier == "confirm" and not confirm:
-        return {
-            "preview": True,
-            "would_call": called,
-            "entity_id": entity_id,
-            "data": dict(data or {}),
-            "tier": "sensitive",
-            "requires_confirm": True,
-            "hint": "re-call with confirm=true to execute.",
-        }
-
-    try:
-        changed = await ha_client.call_service(domain, service, body)
-    except httpx.HTTPStatusError as e:
-        detail = (e.response.text or "").strip()
-        raise NRError(f"HA rejected {called} ({e.response.status_code}): {detail[:200]}") from e
-    trimmed = [{"entity_id": c.get("entity_id"), "state": c.get("state")} for c in changed]
-    out = {
-        "ok": True,
-        "called": called,
-        "entity_id": entity_id,
-        "changed": trimmed,
-        "changed_count": len(trimmed),
-    }
-    if not trimmed:
-        out["note"] = "No state change reported synchronously; verify with ha_get_state."
-    return out
-
-
-def _trim_field(f: dict) -> dict:
-    return {
-        "description": f.get("description", ""),
-        "example": f.get("example"),
-        "required": f.get("required", False),
-    }
-
-
-async def get_services(ha_client, domain: str | None = None) -> dict:
-    """List HA services. No domain -> compact index; a domain -> trimmed detail."""
-    data = await ha_client.get_services()  # list of {domain, services}
-    if domain is None:
-        index = {d["domain"]: sorted((d.get("services") or {}).keys()) for d in data if d.get("domain")}
-        return {"domains": index, "total_domains": len(index)}
-    entry = next((d for d in data if d.get("domain") == domain), None)
-    if entry is None:
-        available = sorted(d["domain"] for d in data if d.get("domain"))
-        return {"domain": domain, "found": False, "available_domains": available}
-    services = {}
-    for name, svc in (entry.get("services") or {}).items():
-        services[name] = {
-            "name": svc.get("name", ""),
-            "description": svc.get("description", ""),
-            "fields": {fn: _trim_field(f) for fn, f in (svc.get("fields") or {}).items()},
-        }
-    return {"domain": domain, "services": services, "total_services": len(services)}
-
-
-_RETENTION_NOTE = (
-    "HA keeps raw history for a limited period (recorder default ~10 days), so a "
-    "wide window returns only what is retained (possibly nothing). For weeks/months "
-    "use long-term statistics, not this tool."
-)
-
-
-async def get_entity_history(ha_client, entity_id: str, hours: int = 24, max_points: int = 200) -> dict:
-    """Recent state-change history for one entity over the last `hours`."""
-    # end_time must be explicit: HA's /api/history/period/<start> defaults the end to
-    # start+24h, which would silently drop the most recent (hours-24)h for hours>24.
-    now = datetime.now(timezone.utc)
-    start = now - timedelta(hours=hours)
-    data = await ha_client.get_history(entity_id, start.isoformat(), now.isoformat())
-    series = data[0] if data else []
-    points = [{"state": p.get("state"),
-               "last_changed": p.get("last_changed") or p.get("last_updated")} for p in series]
-    total = len(points)
-    kept = points[-max_points:] if total > max_points else points
-    out = {
-        "entity_id": entity_id,
-        "hours": hours,
-        "total_changes": total,
-        "points": kept,
-        "first": points[0] if points else None,
-        "last": points[-1] if points else None,
-    }
-    if total > max_points:
-        out["truncated"] = True
-        out["truncated_note"] = f"Showing the most recent {max_points} of {total} state changes."
-    if not points or hours > 240:
-        out["note"] = _RETENTION_NOTE
-    return out

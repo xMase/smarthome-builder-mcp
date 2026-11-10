@@ -1,21 +1,20 @@
 # smarthome-builder-mcp
 
 > [!WARNING]
-> This server acts on real things: it **deploys Node-RED flows**, **calls Home Assistant services**
-> (locks, alarms, devices) and **flashes ESPHome firmware**. Confirmation gates and backup-first writes
-> reduce the risk; they do not remove it. Back up your setup first, and use it at your own risk
+> This server acts on real things: it **deploys Node-RED flows** and **flashes ESPHome firmware**. Confirmation gates and backup-first
+> writes reduce the risk; they do not remove it. Back up your setup first, and use it at your own risk
 > (MIT, no warranty — see [`LICENSE`](LICENSE)).
 
-MCP server that lets an AI assistant (Claude, or any MCP client) manage a Home Assistant smart home
-across three systems — **Node-RED**, **Home Assistant** and **ESPHome** — with **safe,
-backup-first changes**.
+MCP server that lets an AI assistant (Claude, or any MCP client) build the automation side of a
+Home Assistant smart home — **Node-RED** flows and **ESPHome** devices — with **safe,
+backup-first changes**. For Home Assistant itself (entities, states, history, services), connect
+[ha-mcp](https://github.com/homeassistant-ai/ha-mcp) alongside it.
 
 What it manages:
 
 - **Node-RED flows** — read, author and deploy flows through Node-RED's Admin API, with
   awareness of `node-red-contrib-home-assistant-websocket` nodes and their entity/service
   references.
-- **Home Assistant** — search entities, read states, history and statistics, and call services.
 - **ESPHome devices** — list devices, read and edit their YAML, validate it, read live logs,
   compile and **flash firmware over the air (OTA)**. It goes through the ESPHome Device Builder
   add-on over HA ingress, so `HA_URL` + `HA_TOKEN` are all it needs.
@@ -38,7 +37,7 @@ Based on [nr-mcp](https://github.com/Texan-NXTassist/nr-mcp) (MIT). See `NOTICE`
 Plain requests to your AI assistant; it picks the tools and shows you a preview before any change.
 
 - *"When the hallway motion sensor triggers after sunset, turn on the hallway light for 2 minutes —
-  build it in Node-RED."* → finds the real entity ids (`ha_search_entities`), clones an existing HA
+  build it in Node-RED."* → finds the real entity ids (ha-mcp's `ha_search`), clones an existing HA
   node as a template, adds the nodes and wires, shows the diff, deploys on `confirm=true` after a
   backup.
 - *"Why didn't the irrigation flow run this morning?"* → reads the flow, the node configs, recent
@@ -57,6 +56,8 @@ and control the entities you expose. That is the right tool for "turn off the ki
 This server is for **building and changing** the system around those entities: it writes and
 deploys **Node-RED flows**, edits and **flashes ESPHome firmware**, and inspects what ran and why —
 with backups, diff previews and confirmation gates on every change. The two can run side by side.
+For configuring Home Assistant itself (automations, helpers, registries, services), use
+[ha-mcp](https://github.com/homeassistant-ai/ha-mcp).
 
 ## Status
 
@@ -70,7 +71,11 @@ than the author's are largely unexplored.
 
 ## Tools
 
-51 MCP tools, grouped:
+43 MCP tools, grouped:
+
+Home Assistant entity lookup, state and control are **not** provided here: connect
+[ha-mcp](https://github.com/homeassistant-ai/ha-mcp) alongside this server. Authoring flows with HA
+nodes needs it (entity ids via its `ha_search`).
 
 | Group | Tools |
 |---|---|
@@ -79,8 +84,7 @@ than the author's are largely unexplored.
 | **Subflows** (confirm-gated, backup-first) | `nr_create_subflow` (assemble a definition from scratch), `nr_instantiate_subflow` (place an instance on a tab), `nr_add_subflow_port` / `nr_remove_subflow_port` (synced to the definition + every instance), `nr_delete_subflow` |
 | **Backups** | `nr_backup_flow`, `nr_list_backups`, `nr_restore_backup`, `nr_diff` (backup vs current, or backup vs backup) |
 | **Modules & testing** | `nr_get_installed_modules`, `nr_install_module`, `nr_inject` |
-| **Home Assistant** (read) | `ha_search_entities` (live entity lookup by id/name), `ha_get_state` (current state + attributes), `ha_get_services` (discover domains/services for authoring), `ha_get_entity_history`, `ha_get_entity_statistics`, `ha_list_ha_nodes`, `ha_get_server_config`, `ha_check_nodered_integration` |
-| **Home Assistant** (act) | `ha_call_service` — call any HA service (turn on/off, press buttons, nudge covers, set helpers) with a tiered safety gate (see below); `ha_ws_command` — send a raw HA WebSocket command (e.g. entity-registry edits); reads run immediately, writes need `confirm=true`; a `call_service` command obeys the shared service floor |
+| **Home Assistant** (Node-RED side) | `nr_list_ha_nodes`, `nr_get_ha_servers` |
 | **ESPHome** (Device Builder add-on via HA ingress; needs `HA_URL` + `HA_TOKEN`) | Static: `esphome_logs`, `esphome_list_backups`, `esphome_restore_backup`. All other `esphome_<tool>` tools are generated from the Device Builder (≥ 1.15) `/api/mcp` (e.g. `esphome_list_devices`, `esphome_get_config`, `esphome_update_config`, `esphome_validate_config`, `esphome_compile`, `esphome_install`, `esphome_get_job`, `esphome_cancel_job`) and follow upstream parameters. `secrets.yaml` is blocked unless `ESPHOME_ALLOW_SECRETS=true` |
 
 ## How the safety model works
@@ -97,18 +101,6 @@ Every mutating tool runs through one gate:
 So in the default `propose` mode the loop is: *call a tool → read the preview → call again with
 `confirm=true` to apply*. A backup is always written before any real change.
 
-**Calling Home Assistant services (`ha_call_service`)** has its own tiered gate, independent of the
-deploy gate above (HA service calls have no undo, so they cannot be backed up):
-
-- A small **catastrophic floor** (e.g. `homeassistant.restart`, `hassio.host_reboot`,
-  `recorder.purge`) is **always refused** — `confirm=true` cannot override it. Extend it, never shrink
-  it, with `HA_BLOCK_SERVICES`.
-- **Sensitive** services (default: `lock.unlock`/`open`, `alarm_control_panel.alarm_disarm`/
-  `alarm_trigger`, `update.install`) return a dry-run **preview** unless you pass `confirm=true`.
-  Tune the set with `HA_CONFIRM_SERVICES`.
-- Everything else runs directly. The effective policy is reported by `nr_diagnostics`. Note: this
-  gates services *at the call boundary* — a `script`/`automation` can still indirectly reach a gated
-  service, so it is a guardrail against direct mistakes, not a sandbox.
 
 **ESPHome (`esphome_*`)** has its own gate too; it talks to the Device Builder add-on, not to the
 Node-RED deploy path. Tools are generated from the Device Builder's own MCP server (Device Builder
@@ -140,12 +132,8 @@ Copy `.env.example` to `.env` and edit it. Every variable is optional; defaults 
 | `NR_USER` / `NR_PASS` | — | Node-RED login credentials (HA add-on: your HA username/password) |
 | `NR_AUTH` | `basic` | How `NR_USER`/`NR_PASS` are used: `basic` — HTTP Basic on every request (correct for the **HA Node-RED add-on**, where nginx handles auth before Node-RED sees the request); `token` — exchange for a bearer via `POST /auth/token` (vanilla Node-RED with `adminAuth`) |
 | `NR_VERIFY_SSL` | `1` | `0` to skip TLS verification (self-signed certs) |
-| `HA_URL` | — | Home Assistant base URL (`:8123`) — **distinct from `NR_URL` (`:1880`)**. Enables `ha_search_entities`/`ha_get_state` for entity discovery during authoring |
+| `HA_URL` | — | Home Assistant base URL (`:8123`) — **distinct from `NR_URL` (`:1880`)**. Used by the `esphome_*` tools and the `nr_diagnostics` HA reachability check |
 | `HA_TOKEN` | — | Long-lived HA access token (Profile → Long-Lived Access Tokens) |
-| `HA_BLOCK_SERVICES` | — | Comma-separated `domain.service` / `domain.*` entries that `ha_call_service` will always refuse, in addition to the built-in catastrophic floor (homeassistant.stop, homeassistant.restart, hassio.host_reboot, hassio.host_shutdown, hassio.supervisor_restart, hassio.restore_full, hassio.restore_partial, recorder.purge, recorder.purge_entities). Optional; default empty. |
-| `HA_CONFIRM_SERVICES` | default set | Comma-separated `domain.service` / `domain.*` entries that require `confirm=true`; without it the tool returns a dry-run preview. Unset = built-in default set (lock.unlock, lock.open, alarm_control_panel.alarm_disarm, alarm_control_panel.alarm_trigger, update.install). Set to empty string to gate nothing. |
-| `HA_WS_BLOCK_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` will always refuse (additive to the built-in floor; `confirm=true` cannot override). |
-| `HA_WS_READ_COMMANDS` | — | Comma-separated WebSocket command types that `ha_ws_command` treats as read-only (additive to the built-in defaults), so they run immediately without `confirm=true`. |
 | `ESPHOME_ADDON_SLUG` | `5c53de3b_esphome` | Slug of the ESPHome Device Builder add-on used by the `esphome_*` tools (reached through HA ingress with `HA_URL` + `HA_TOKEN`; the token must belong to an HA admin user if the add-on panel is admin-only) |
 | `ESPHOME_ALLOW_SECRETS` | `false` | `true` lets the `esphome_*` tools that take a `configuration` (e.g. `esphome_get_config`, `esphome_update_config`, `esphome_restore_backup`) name `secrets.yaml` / `secrets.yml` (their values then pass through the conversation). The block on direct reads/writes of `secrets.yaml` is not a security boundary: a device YAML can `!include secrets.yaml`, and `esphome_validate_config` output then shows the values |
 | `DEPLOY_MODE` | `propose` | `propose` (preview, write on `confirm=true`) or `auto` |
@@ -240,7 +228,7 @@ docker compose down -v
 ```
 
 The script:
-- Lists the registered MCP tools and asserts every expected static tool name (43) is present.
+- Lists the registered MCP tools and asserts every expected static tool name (35) is present.
 - Calls `nr_get_flow_summary` and checks the response structure.
 - Seeds a tab + inject node via the Admin API if Node-RED is empty.
 - Calls `nr_safe_deploy` in propose mode (`confirm=false`) and asserts `deployed:false` plus a diff preview.

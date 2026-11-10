@@ -48,7 +48,7 @@ Three layers, each in `src/nrha_mcp/`:
 2. **Domain modules** — pure-ish logic, each owning one area: `flows.py` (read/search/context),
    `edit.py` (node create/patch/wire/delete), `deploy.py` (the deploy safety gate), `backup.py`
    (`BackupStore`: snapshot/list/restore), `modules.py` (palette install), `ha.py` (HA-node
-   recognition + a *separate* `HARestClient` for the HA REST API at `:8123`), `esphome.py` (ESPHome Device Builder via HA ingress; own websocket
+   recognition + a minimal `HARestClient` used only for the diagnostics ping), `esphome.py` (ESPHome Device Builder via HA ingress; own websocket
    transport for `esphome_logs` and the local YAML backups; bypasses `NRClient` and `deploy.commit`),
    `esphome_proxy.py` (JSON-RPC transport to the Device Builder's `/api/mcp` plus the gated proxy that
    `server.py`'s `_Server` uses to generate the other `esphome_<tool>` tools at list time).
@@ -80,15 +80,15 @@ So default behavior is a two-call loop: call a tool → read the preview → cal
   `len(names) == N` count in `tests/test_server_smoke.py`, and `EXPECTED_TOOLS` in
   `scripts/smoke_e2e.py`. `tests/test_tool_count_sync.py` guards this — it fails and names the exact
   divergence if any of the three drifts from the tools registered in `server.py`.
-- **Authoring HA nodes:** resolve `entity_id` via `ha_search_entities` first; reuse an existing
+- **Authoring HA nodes:** resolve `entity_id` via ha-mcp's `ha_search` first (ha-mcp is a separate MCP server the client must also connect); reuse an existing
   source node when one already provides the data; to build a new HA node, clone an existing node of
   the same type via `nr_search_nodes`; avoid deprecated fields `state_type`/`stateType` (use
-  `outputProperties`); get the HA server config id via `ha_get_server_config`. This guidance is also
+  `outputProperties`); get the HA server config id via `nr_get_ha_servers`. This guidance is also
   baked into the server's MCP `instructions` string.
 - **`NR_AUTH` matters:** `basic` is correct for the **Home Assistant Node-RED add-on** (nginx handles
   auth before Node-RED); `token` is for vanilla Node-RED with `adminAuth` (exchanges credentials at
-  `POST /auth/token`). The HA REST tools (`ha_*`) are separate and need `HA_URL` (`:8123`) +
-  `HA_TOKEN`; they no-op with a clear message if those are unset.
+  `POST /auth/token`). `HA_URL` (`:8123`) + `HA_TOKEN` are separate: they serve the `esphome_*` tools and the
+  `nr_diagnostics` HA ping, and those no-op with a clear message if unset. HA entity lookup/control comes from ha-mcp.
 - **`http` mode needs `MCP_AUTH_TOKEN`:** `main()` refuses to start without it; the SDK's bearer
   middleware (our `_StaticTokenVerifier`) returns 401 on a missing/wrong token. Tests that expect
   "no token" rely on `_fresh_server` setting `MCP_AUTH_TOKEN=""`, which overrides a local `.env`.

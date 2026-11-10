@@ -31,7 +31,7 @@ back rather than guessing.
    touch HTTP directly.
 2. Domain modules — pure-ish logic, one area each: `flows.py` (read/search/context),
    `edit.py` (node create/patch/wire/delete), `deploy.py` (the deploy gate),
-   `backup.py`, `modules.py`, `ha.py` / `ha_ws.py` (HA REST/WS), `validate.py`,
+   `backup.py`, `modules.py`, `ha.py` / `ha_ws.py` (HA-node recognition / HA WebSocket transport), `validate.py`,
    `runtime.py`, `diagnostics.py`, `subflow_edit.py`. Signal failure by raising
    `NRError` / `NRAuthError` / `NRConflictError` / `NRNotFoundError`.
 3. `client.py` (`NRClient`) — the single path to Node-RED's Admin API. If you add a
@@ -60,11 +60,11 @@ names.
 
 ## Authoring Home Assistant nodes
 
-Resolve `entity_id` via `ha_search_entities` first; reuse an existing source node when
+Resolve `entity_id` via ha-mcp's `ha_search` first (separate MCP server); reuse an existing source node when
 one already provides the data instead of adding another; to build a new HA node, clone
 an existing same-type node's schema (`nr_search_nodes`); avoid deprecated fields
 `state_type`/`stateType` (use `outputProperties`); get the HA server config id via
-`ha_get_server_config`.
+`nr_get_ha_servers`.
 
 ## Commands
 

@@ -13,7 +13,7 @@ from mcp_types import CallToolResult, TextContent, Tool as MCPTool
 from .config import Settings
 from .client import NRClient, NRError
 from .backup import BackupStore
-from . import flows, edit, modules, ha, runtime, validate, deploy, diagnostics, ha_ws, subflow_edit, esphome, esphome_proxy
+from . import flows, edit, modules, ha, runtime, validate, deploy, diagnostics, subflow_edit, esphome, esphome_proxy
 
 settings = Settings()
 client = NRClient(settings)
@@ -22,20 +22,23 @@ store = BackupStore(settings.backup_dir)
 HA_AUTHORING_GUIDANCE = (
     "Authoring Node-RED + Home Assistant "
     "(node-red-contrib-home-assistant-websocket) flows.\n\n"
-    "Nodes: resolve entity_id via ha_search_entities; reuse an existing source node "
+    "Nodes: resolve entity_id via ha-mcp's ha_search (a separate MCP server the client must also connect); reuse an existing source node "
     "(e.g. a poll-state) before adding one; to add a new HA node, clone the CURRENT "
     "schema of a same-type node via nr_search_nodes rather than emitting fields from "
     "memory — training-data schemas are often stale (e.g. the deprecated "
     "state_type/stateType; use outputProperties instead). Validate new nodes with "
-    "nr_validate_flow before deploying. Server config id from ha_get_server_config.\n\n"
+    "nr_validate_flow before deploying. Server config id from nr_get_ha_servers.\n\n"
     "Layout: left→right by data flow; columns ~180px (x), rows ~80px (y), every x/y "
     "on a 20px grid, no overlaps. Group related nodes (one automation, or all nodes "
     "for an entity) in a type:'group' node: descriptive name, style:{label:true}, "
     "member ids in 'nodes', g=<groupId> on each member (both must agree), x/y/w/h "
     "bounding the members.\n\n"
     "Mutating flows is confirm-gated + backup-first: tools preview, then re-call with "
-    "confirm=true. To change HA itself (entity-registry edits, etc.) use ha_ws_command "
-    "— don't build throwaway nodes for it."
+    "confirm=true. To change HA itself (entity-registry edits, etc.) use ha-mcp's typed "
+    "tools (e.g. ha_set_entity) — don't build throwaway nodes for it. Before creating "
+    "ha-switch/ha-button/ha-sensor nodes, check with ha-mcp's "
+    "ha_get_integration(domain=\"nodered\") that the Node-RED Companion integration exists "
+    "with state loaded; setting it up is a manual HA step."
     "\n\nESPHome: esphome_* tools other than esphome_logs / esphome_list_backups / "
     "esphome_restore_backup come from the Device Builder itself. Writes need confirm=true "
     "(install and set_secret always). Before esphome_update_config, read esphome_get_config "
@@ -365,96 +368,15 @@ async def nr_inject(node_id: str) -> str:
 
 # ---- HA awareness ----
 @mcp.tool()
-async def ha_list_ha_nodes() -> str:
+async def nr_list_ha_nodes() -> str:
     """List Home Assistant nodes in the flows with their domain/service/entity."""
     return await _wrap(lambda: ha.list_ha_nodes(client))
 
 
 @mcp.tool()
-async def ha_get_server_config() -> str:
+async def nr_get_ha_servers() -> str:
     """List the Home Assistant server config nodes Node-RED uses."""
     return await _wrap(lambda: ha.get_server_config(client))
-
-
-@mcp.tool()
-async def ha_search_entities(query: str, limit: int = 20) -> str:
-    """Search live Home Assistant entities by entity_id or friendly name (e.g. "umidità bagno").
-    Use this to resolve the correct entity_id BEFORE authoring HA nodes. Requires HA_URL + HA_TOKEN."""
-    if not settings.ha_url or not settings.ha_token:
-        return _err("HA entity search needs HA_URL and HA_TOKEN to be set.")
-    ha_client = ha.HARestClient(settings)
-    try:
-        return await _wrap(lambda: ha.search_entities(ha_client, query, limit))
-    finally:
-        await ha_client.close()
-
-
-@mcp.tool()
-async def ha_get_state(entity_id: str) -> str:
-    """Get the current state + attributes of a Home Assistant entity. Requires HA_URL + HA_TOKEN."""
-    if not settings.ha_url or not settings.ha_token:
-        return _err("HA get_state needs HA_URL and HA_TOKEN to be set.")
-    ha_client = ha.HARestClient(settings)
-    try:
-        return await _wrap(lambda: ha.get_entity_state(ha_client, entity_id))
-    finally:
-        await ha_client.close()
-
-
-@mcp.tool()
-async def ha_get_services(domain: str | None = None) -> str:
-    """List Home Assistant services for authoring call-service nodes. Requires HA_URL + HA_TOKEN.
-
-    Without `domain`: a compact index {domain: [service names]}. With `domain`:
-    that domain's services with description and fields (each field:
-    description/example/required). Use it to fill a call-service node's
-    domain/service/data correctly."""
-    if not settings.ha_url or not settings.ha_token:
-        return _err("HA get_services needs HA_URL and HA_TOKEN to be set.")
-    ha_client = ha.HARestClient(settings)
-    try:
-        return await _wrap(lambda: ha.get_services(ha_client, domain))
-    finally:
-        await ha_client.close()
-
-
-@mcp.tool()
-async def ha_call_service(domain: str, service: str,
-                          entity_id: str | list[str] | None = None,
-                          data: dict | None = None, confirm: bool = False) -> str:
-    """Call a Home Assistant service (turn on/off, press buttons, set helpers).
-    Requires HA_URL + HA_TOKEN.
-
-    `entity_id` targets entities; `data` carries extra params or non-entity targets
-    (area_id, etc.). Tiered safety: ordinary services run directly; sensitive ones
-    (lock.unlock, alarm disarm) need confirm=true (else a preview); a catastrophic set
-    (homeassistant.restart, etc.) is always blocked. Find services via ha_get_services."""
-    if not settings.ha_url or not settings.ha_token:
-        return _err("HA call_service needs HA_URL and HA_TOKEN to be set.")
-    ha_client = ha.HARestClient(settings)
-    try:
-        return await _wrap(lambda: ha.call_service(
-            ha_client, settings, domain, service,
-            entity_id=entity_id, data=data, confirm=confirm))
-    finally:
-        await ha_client.close()
-
-
-@mcp.tool()
-async def ha_get_entity_history(entity_id: str, hours: int = 24, max_points: int = 200) -> str:
-    """Recent state history of a Home Assistant entity. Requires HA_URL + HA_TOKEN.
-
-    Returns up to `max_points` most-recent state changes over the last `hours`,
-    with `first`/`last` and a `total_changes` count. NOTE: HA keeps raw history for
-    a limited period (recorder default ~10 days); for wider spans (weeks/months)
-    use long-term statistics, not this tool."""
-    if not settings.ha_url or not settings.ha_token:
-        return _err("HA get_entity_history needs HA_URL and HA_TOKEN to be set.")
-    ha_client = ha.HARestClient(settings)
-    try:
-        return await _wrap(lambda: ha.get_entity_history(ha_client, entity_id, hours=hours, max_points=max_points))
-    finally:
-        await ha_client.close()
 
 
 @mcp.tool()
@@ -463,48 +385,6 @@ async def nr_diagnostics() -> str:
     context store names, flow counts, installed node sets, MCP config, and Home
     Assistant configured/reachable. Run it first when something seems off."""
     return await _wrap(lambda: diagnostics.run(client, settings))
-
-
-@mcp.tool()
-async def ha_get_entity_statistics(entity_id: str, days: int = 30,
-                                   period: str = "day", max_buckets: int = 200) -> str:
-    """Long-term statistics (downsampled mean/min/max) for a Home Assistant entity.
-    Requires HA_URL + HA_TOKEN.
-
-    Returns up to `max_buckets` aggregate buckets over the last `days`, bucketed by
-    `period` ("hour"|"day"|"week"|"month"). This is the tool for WIDE spans
-    (weeks/months/year) where raw history (ha_get_entity_history) is retention-limited."""
-    if not settings.ha_url or not settings.ha_token:
-        return _err("HA get_entity_statistics needs HA_URL and HA_TOKEN to be set.")
-    return await _wrap(lambda: ha_ws.get_entity_statistics(
-        settings, entity_id, days=days, period=period, max_buckets=max_buckets))
-
-
-@mcp.tool()
-async def ha_check_nodered_integration() -> str:
-    """Check whether the 'Node-RED Companion' integration is set up in Home Assistant.
-    ha-switch/ha-button/ha-sensor nodes can only publish entities to HA when this
-    integration is installed (Settings -> Devices & Services) - a manual HA step no tool
-    can perform. Read-only; requires an admin HA token. Returns
-    {installed, entries:[{entry_id,title,state}], note}."""
-    if not settings.ha_url or not settings.ha_token:
-        return _err("HA check_nodered_integration needs HA_URL and HA_TOKEN to be set.")
-    return await _wrap(lambda: ha_ws.check_nodered_integration(settings))
-
-
-@mcp.tool()
-async def ha_ws_command(command: str, params: dict | None = None,
-                        confirm: bool = False) -> str:
-    """Send a raw HA WebSocket command — escape hatch for capabilities no other ha_* tool
-    covers (e.g. config/entity_registry/remove|update). Requires HA_URL + HA_TOKEN.
-
-    `command` is the WS "type"; `params` merge into the message. Reads (/list, /get,
-    get_states, render_template, recorder stats) run immediately; other commands are
-    writes — preview unless confirm=true. A `call_service` command obeys the same safety
-    floor as ha_call_service (cannot be bypassed)."""
-    if not settings.ha_url or not settings.ha_token:
-        return _err("HA ha_ws_command needs HA_URL and HA_TOKEN to be set.")
-    return await _wrap(lambda: ha_ws.run_command(settings, command, params, confirm=confirm))
 
 
 # ---- ESPHome (Device Builder add-on via HA ingress) ----

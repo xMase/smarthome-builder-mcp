@@ -21,19 +21,10 @@ class Settings(BaseSettings):
     deploy_mode: Literal["propose", "auto"] = "propose"
     backup_dir: str = "./backups"
 
-    # Home Assistant REST API (entity discovery for authoring)
+    # Home Assistant (ESPHome tools and the nr_diagnostics reachability ping)
     # HA base URL is :8123, distinct from Node-RED's :1880
     ha_url: str = ""
     ha_token: str = ""
-
-    # Home Assistant service-call safety (ha_call_service)
-    # csv of "domain.service" or "domain.*"
-    ha_block_services: str = ""            # additive to the catastrophic floor
-    ha_confirm_services: str | None = None  # override-with-default: None=default, ""=gate nothing
-
-    # Home Assistant WebSocket command safety (ha_ws_command)
-    ha_ws_block_commands: str = ""            # additive block-list of WS command types
-    ha_ws_read_commands: str | None = None    # additive to the read allowlist (None=just defaults)
 
     # ESPHome Device Builder via HA ingress (esphome_* tools; needs HA_URL + HA_TOKEN)
     esphome_addon_slug: str = "5c53de3b_esphome"
