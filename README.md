@@ -1,9 +1,9 @@
 # smarthome-builder-mcp
 
 > [!WARNING]
-> This server acts on real things: it **deploys Node-RED flows** and **flashes ESPHome firmware**. Confirmation gates and backup-first
-> writes reduce the risk; they do not remove it. Back up your setup first, and use it at your own risk
-> (MIT, no warranty — see [`LICENSE`](LICENSE)).
+> This server acts on real things: it **deploys Node-RED flows** and **flashes ESPHome firmware**.
+> Confirmation gates and backup-first writes reduce the risk; they do not remove it. Back up your
+> setup first, and use it at your own risk (MIT, no warranty — see [`LICENSE`](LICENSE)).
 
 MCP server that lets an AI assistant (Claude, or any MCP client) build the automation side of a
 Home Assistant smart home — **Node-RED** flows and **ESPHome** devices — with **safe,
@@ -41,7 +41,7 @@ Plain requests to your AI assistant; it picks the tools and shows you a preview 
   node as a template, adds the nodes and wires, shows the diff, deploys on `confirm=true` after a
   backup.
 - *"Why didn't the irrigation flow run this morning?"* → reads the flow, the node configs, recent
-  runtime events and debug output, and the history of the entities involved.
+  runtime events and debug output, and (through ha-mcp) the history of the entities involved.
 - *"Add a DS18B20 temperature sensor on GPIO4 to the garage ESP32 and flash it."* → reads the device
   YAML, shows the diff, validates it, backs up and writes it, then flashes over the air and follows
   the compile/upload job until "OTA successful".
@@ -56,8 +56,6 @@ and control the entities you expose. That is the right tool for "turn off the ki
 This server is for **building and changing** the system around those entities: it writes and
 deploys **Node-RED flows**, edits and **flashes ESPHome firmware**, and inspects what ran and why —
 with backups, diff previews and confirmation gates on every change. The two can run side by side.
-For configuring Home Assistant itself (automations, helpers, registries, services), use
-[ha-mcp](https://github.com/homeassistant-ai/ha-mcp).
 
 ## Status
 
@@ -71,11 +69,9 @@ than the author's are largely unexplored.
 
 ## Tools
 
-43 MCP tools, grouped:
-
-Home Assistant entity lookup, state and control are **not** provided here: connect
-[ha-mcp](https://github.com/homeassistant-ai/ha-mcp) alongside this server. Authoring flows with HA
-nodes needs it (entity ids via its `ha_search`).
+35 static MCP tools, plus the `esphome_*` tools generated from the Device Builder (their number
+depends on its version), grouped. Authoring flows with HA nodes also needs ha-mcp, for entity ids
+(`ha_search`).
 
 | Group | Tools |
 |---|---|
